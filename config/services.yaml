@@ -22,7 +22,10 @@ services:
     App\:
         resource: '../src/'
         exclude:
+            - '../src/IpStrategy/'
             - '../src/Entity/'
+            - '../src/Model/'
+            - '../src/Messenger/'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

@@ -4,17 +4,27 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-use App\Flow\FlowRuntime;
+use App\Flow\InputProviderFlow;
 use App\Message\VoiceControlMessage;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceTransportProvider;
 use App\Service\VoiceWorkerRegistry;
+use Flow\Driver\AmpDriver;
+use Flow\DriverInterface;
+use Flow\Driver\FiberDriver;
+use Flow\ExceptionInterface;
+use Flow\Flow\Flow;
+use Flow\Flow\TransportFlow;
+use Flow\FlowFactory;
+use Flow\Ip;
+use Flow\IpStrategy\LinearIpStrategy;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 
@@ -24,12 +34,12 @@ use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 )]
 final class VoiceWorkerCommand extends Command
 {
-    private const HEARTBEAT_INTERVAL_SECONDS = 5;
+    private const HEARTBEAT_INTERVAL_SECONDS = 1000000; // 1 second
+    private const INPUT_PROVIDER_INTERVALE_SECONDS = 1; // 1 second
 
     public function __construct(
         private readonly VoiceTransportProvider $transportProvider,
         private readonly VoiceWorkerRegistry $registry,
-        private readonly FlowRuntime $flowRuntime,
     ) {
         parent::__construct();
     }
@@ -54,74 +64,56 @@ final class VoiceWorkerCommand extends Command
             return Command::FAILURE;
         }
 
-        $running = true;
-        $lastHeartbeat = time();
-        $signalHandler = function () use (&$running): void {
-            $running = false;
+        $driver = new FiberDriver();
+
+        $inputProviderFlow = new InputProviderFlow($driver, $receiver);
+        $displayFlow = static function (VoiceControlEvent $event) use ($sessionId, $io): VoiceControlEvent {
+            $io->writeln(sprintf(
+                '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
+                date('Y-m-d H:i:s'),
+                $sessionId,
+                $event->type->value,
+                $event->at->format(\DateTimeInterface::ATOM),
+                $event->type->value,
+                $event->at->format(\DateTimeInterface::ATOM),
+            ));
+
+            return $event;
+        };
+
+        $flow = (new FlowFactory())
+            ->create(static function () use ($inputProviderFlow, $displayFlow): \Generator {
+                yield $inputProviderFlow;
+                yield $displayFlow;
+            }, [
+                'driver' => $driver,
+            ]);
+
+        $cleanupInputProvider = $inputProviderFlow->tick(self::INPUT_PROVIDER_INTERVALE_SECONDS);
+        $cleanupHeartbeat = $driver->tick(self::HEARTBEAT_INTERVAL_SECONDS, function () use ($sessionId): void {
+            $this->registry->heartbeat($sessionId);
+        });
+
+        $onStop = function () use ($cleanupInputProvider, $cleanupHeartbeat, $sessionId, $io): void {
+            $cleanupHeartbeat();
+            $cleanupInputProvider();
+
+            $this->registry->unregister($sessionId);
+            $io->info(sprintf('Unregistered session "%s".', $sessionId));
+            exit(0);
         };
         pcntl_async_signals(true);
-        pcntl_signal(SIGINT, $signalHandler);
-        pcntl_signal(SIGTERM, $signalHandler);
+        pcntl_signal(SIGINT, $onStop);
+        pcntl_signal(SIGTERM, $onStop);
 
         try {
-            while ($running) {
-                $now = time();
-                if ($now - $lastHeartbeat >= self::HEARTBEAT_INTERVAL_SECONDS) {
-                    $this->registry->heartbeat($sessionId);
-                    $lastHeartbeat = $now;
-                }
-
-                $envelopes = $receiver->get();
-                foreach ($envelopes as $envelope) {
-                    if (!$running) {
-                        break;
-                    }
-                    $this->handleEnvelope($envelope, $sessionId, $io, $receiver);
-                }
-
-                if (!$running) {
-                    break;
-                }
-                usleep(100_000); // 100ms poll when idle
-            }
+            $flow->await();
         } finally {
             $this->registry->unregister($sessionId);
             $io->info(sprintf('Unregistered session "%s".', $sessionId));
         }
 
         return Command::SUCCESS;
-    }
-
-    private function handleEnvelope(
-        Envelope $envelope,
-        string $sessionId,
-        SymfonyStyle $io,
-        ReceiverInterface $receiver,
-    ): void {
-        $message = $envelope->getMessage();
-        if (!$message instanceof VoiceControlMessage) {
-            $receiver->reject($envelope);
-            return;
-        }
-
-        try {
-            $event = new VoiceControlEvent($message->type, $message->at);
-            $outputEvent = $this->flowRuntime->runInputProvider($event);
-
-            $io->writeln(sprintf(
-                '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
-                date('Y-m-d H:i:s'),
-                $sessionId,
-                $message->type->value,
-                $message->at->format(\DateTimeInterface::ATOM),
-                $outputEvent->type->value,
-                $outputEvent->at->format(\DateTimeInterface::ATOM),
-            ));
-            $receiver->ack($envelope);
-        } catch (\Throwable $e) {
-            $io->error(sprintf('Handler failed: %s', $e->getMessage()));
-            $receiver->reject($envelope);
-        }
     }
 
     private function generateSessionId(): string

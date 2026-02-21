@@ -4,40 +4,44 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4275b274cb35a36180de52277c14b52e",
+    "content-hash": "b4c9bbc421e09f8e9e425d546489d3ae",
     "packages": [
         {
             "name": "darkwood/flow",
-            "version": "v1.1.5",
+            "version": "v1.2.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/darkwood-com/flow.git",
-                "reference": "6e04824cb3cf1c67483e3ede9e67ef994621baa5"
+                "reference": "3860919c339920db535b608b10ff1363ae72c764"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/darkwood-com/flow/zipball/6e04824cb3cf1c67483e3ede9e67ef994621baa5",
-                "reference": "6e04824cb3cf1c67483e3ede9e67ef994621baa5",
+                "url": "https://api.github.com/repos/darkwood-com/flow/zipball/3860919c339920db535b608b10ff1363ae72c764",
+                "reference": "3860919c339920db535b608b10ff1363ae72c764",
                 "shasum": ""
             },
             "require": {
-                "php": ">=8.2"
+                "php": ">=8.5",
+                "symfony/config": "^8.0",
+                "symfony/dependency-injection": "^8.0",
+                "symfony/event-dispatcher": "^8.0",
+                "symfony/http-kernel": "^8.0",
+                "symfony/messenger": "^8.0",
+                "symfony/string": "^8.0"
             },
             "require-dev": {
-                "amphp/amp": "^3.0",
-                "openswoole/ide-helper": "^22.0.1",
-                "react/async": "^4.2",
-                "revolt/event-loop": "^1.0.6",
-                "spatie/async": "^1.6",
-                "symfony/doctrine-messenger": "^7.0",
-                "symfony/messenger": "^7.0",
-                "symfony/orm-pack": "^2.4"
+                "amphp/amp": "^3.1",
+                "doctrine/dbal": "^4.3",
+                "openswoole/ide-helper": "^22.1",
+                "react/async": "^4.3",
+                "spatie/async": "^1.8",
+                "symfony/doctrine-messenger": "^8.0",
+                "symfony/http-client": "^8.0"
             },
             "suggest": {
                 "amphp/amp": "Provide asynchronous with AMP",
                 "ext-openswoole": "Provide asynchronous with OpenSwoole",
                 "react/async": "Provide asynchronous with ReactPHP",
-                "revolt/event-loop": "Provide asynchronous with Revolt",
                 "spatie/async": "Provide asynchronous with Spatie",
                 "symfony/messenger": "Provide Symfony Messenger support"
             },
@@ -71,7 +75,7 @@
             ],
             "support": {
                 "issues": "https://github.com/darkwood-com/flow/issues",
-                "source": "https://github.com/darkwood-com/flow/tree/v1.1.5"
+                "source": "https://github.com/darkwood-com/flow/tree/v1.2.5"
             },
             "funding": [
                 {
@@ -79,7 +83,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2023-12-01T16:36:51+00:00"
+            "time": "2025-12-21T16:57:53+00:00"
         },
         {
             "name": "doctrine/collections",
@@ -4116,7 +4120,7 @@
     "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
@@ -4124,6 +4128,6 @@
         "ext-ctype": "*",
         "ext-iconv": "*"
     },
-    "platform-dev": [],
+    "platform-dev": {},
     "plugin-api-version": "2.6.0"
 }
