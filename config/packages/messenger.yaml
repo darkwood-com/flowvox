@@ -1,0 +1,5 @@
+framework:
+    messenger:
+        # Transports are created dynamically per session in VoiceTransportProvider
+        serializer:
+            default_serializer: messenger.transport.native_php_serializer

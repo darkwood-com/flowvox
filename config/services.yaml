@@ -9,6 +9,9 @@
 parameters:
 
 services:
+    # Bind Messenger transport factory and serializer for VoiceTransportProvider
+    Symfony\Component\Messenger\Transport\TransportFactoryInterface: '@messenger.transport_factory'
+    Symfony\Component\Messenger\Transport\Serialization\SerializerInterface: '@messenger.default_serializer'
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.
@@ -18,6 +21,8 @@ services:
     # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: '../src/'
+        exclude:
+            - '../src/Entity/'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
