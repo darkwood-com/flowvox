@@ -28,8 +28,8 @@ final class RecorderFlow extends Flow
         $ipStrategy = new VoiceRecorderIpStrategy($voiceRecorder, $logger);
 
         parent::__construct(
-            static function (VoiceControlEvent|AudioChunk $data): VoiceControlEvent|AudioChunk {
-                return $data;
+            function (VoiceControlEvent $data) use ($ipStrategy): AudioChunk {
+                return $ipStrategy->getAudioChunkForStartEvent($data);
             },
             null,
             $ipStrategy,

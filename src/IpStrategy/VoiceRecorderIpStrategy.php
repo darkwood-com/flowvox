@@ -31,9 +31,9 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
     private string $state = self::STATE_IDLE;
     private ?Ip $activeStartIp = null;
     private ?Ip $queuedStartIp = null;
-    /** @var list<Ip<AudioChunk>> */
-    private array $outputQueue = [];
-    /** @var list<Ip<VoiceControlEvent>> START ip from push that produced each output (Option C: proxy for POOL count) */
+    /** @var array<int, AudioChunk> chunk by spl_object_id of the START VoiceControlEvent */
+    private array $chunksByStartEventId = [];
+    /** @var list<Ip<VoiceControlEvent>> START ip from push that produced each output */
     private array $outputQueueStartIps = [];
 
     public function __construct(
@@ -83,12 +83,27 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
 
     public function pull(PullEvent $event): void
     {
-        if ($this->outputQueue === []) {
+        if ($this->outputQueueStartIps === []) {
             return;
         }
-        array_shift($this->outputQueueStartIps);
-        $ip = array_shift($this->outputQueue);
+        $ip = array_shift($this->outputQueueStartIps);
         $event->addIp($ip);
+    }
+
+    /**
+     * Returns the AudioChunk produced for the given START VoiceControlEvent (keyed by instance id).
+     * Removes the chunk from the map after retrieval.
+     */
+    public function getAudioChunkForStartEvent(VoiceControlEvent $event): AudioChunk
+    {
+        $id = spl_object_id($event);
+        $chunk = $this->chunksByStartEventId[$id] ?? null;
+        if ($chunk === null) {
+            throw new \OutOfBoundsException(sprintf('No AudioChunk found for VoiceControlEvent instance %d', $id));
+        }
+        unset($this->chunksByStartEventId[$id]);
+
+        return $chunk;
     }
 
     public function pool(PoolEvent $event): void
@@ -98,7 +113,7 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
             if ($wavPath !== null) {
                 $this->logger->info('POOL -> stop finalized path={path} -> emitted AudioChunk', ['path' => $wavPath]);
                 $this->state = self::STATE_IDLE;
-                $this->outputQueue[] = new Ip(new AudioChunk());
+                $this->chunksByStartEventId[spl_object_id($this->activeStartIp->data)] = new AudioChunk();
                 $this->outputQueueStartIps[] = $this->activeStartIp;
                 $this->activeStartIp = null;
 
