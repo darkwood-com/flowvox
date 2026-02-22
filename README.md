@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://github.com/darkwood-com/flowvox">
+    <img src="public/logo.png" width="auto" height="128px" alt="Flow">
+  </a>
+</p>
+
 # Flowvox
 
 Symfony skeleton with Flow and Messenger-only voice worker MVP.
