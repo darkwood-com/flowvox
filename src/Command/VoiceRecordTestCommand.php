@@ -19,6 +19,9 @@ use Symfony\Component\Process\Process;
 )]
 final class VoiceRecordTestCommand extends Command
 {
+    /** Seconds to poll after requestStop() before falling back to stop() (give ffmpeg time to finalize). */
+    private const GRACE_POLL_SECONDS = 2;
+
     public function __construct(
         private readonly VoiceRecorder $voiceRecorder,
     ) {
@@ -45,7 +48,24 @@ final class VoiceRecordTestCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->info(sprintf('Starting recording for %d second(s)...', $seconds));
+        $recorder = $this->voiceRecorder;
+        $graceSeconds = self::GRACE_POLL_SECONDS;
+        $onStop = static function () use ($recorder, $graceSeconds, $io): void {
+            if ($recorder->isRecording()) {
+                $path = self::waitForStop($recorder, $graceSeconds);
+                if ($path !== null) {
+                    $io->success(sprintf('Stopped by signal. WAV file: %s', $path));
+                }
+            }
+            exit(0);
+        };
+        if (function_exists('pcntl_async_signals')) {
+            pcntl_async_signals(true);
+            pcntl_signal(\SIGINT, $onStop);
+            pcntl_signal(\SIGTERM, $onStop);
+        }
+
+        $io->info(sprintf('Starting recording for %d second(s)... (Ctrl+C to stop early and save)', $seconds));
 
         try {
             $path = $this->voiceRecorder->start();
@@ -58,7 +78,7 @@ final class VoiceRecordTestCommand extends Command
         sleep($seconds);
 
         try {
-            $stoppedPath = $this->voiceRecorder->stop();
+            $stoppedPath = self::waitForStop($this->voiceRecorder, self::GRACE_POLL_SECONDS);
             $io->success(sprintf('Stopped. WAV file: %s', $stoppedPath ?? $path));
         } catch (\Throwable $e) {
             $io->error('Failed to stop recorder: ' . $e->getMessage());
@@ -71,6 +91,23 @@ final class VoiceRecordTestCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Request stop then poll for up to $graceSeconds; if process has not exited, call stop() to wait until done.
+     */
+    private static function waitForStop(VoiceRecorder $recorder, int $graceSeconds): ?string
+    {
+        $recorder->requestStop();
+        $deadline = time() + $graceSeconds;
+        while (time() < $deadline) {
+            $path = $recorder->pollStop();
+            if ($path !== null) {
+                return $path;
+            }
+            usleep(50_000);
+        }
+        return $recorder->stop();
     }
 
     private function printStreamInfo(SymfonyStyle $io, string $wavPath): void

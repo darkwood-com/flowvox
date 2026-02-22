@@ -29,6 +29,13 @@ final class VoiceRecorder
     private ?string $currentFilePath = null;
     private ?\DateTimeImmutable $startedAt = null;
 
+    /** Set when requestStop() has been called (SIGINT sent). */
+    private bool $stopRequested = false;
+    /** Deadline (timestamp) after which we may send SIGTERM. */
+    private ?float $stopDeadline = null;
+    /** Set after SIGTERM has been sent (non-blocking stop flow). */
+    private bool $sigtermSent = false;
+
     public function __construct(
         private readonly string $projectDir,
         private readonly ?string $ffmpegPath = null,
@@ -81,7 +88,77 @@ final class VoiceRecorder
     }
 
     /**
-     * Stop recording gracefully. Sends SIGINT first (so ffmpeg finalizes WAV header), then SIGTERM if needed.
+     * Request stop without blocking. Sends SIGINT once; POOL will call pollStop() until finalized.
+     */
+    public function requestStop(): void
+    {
+        if (!$this->recording || $this->stopRequested) {
+            return;
+        }
+        $proc = $this->process;
+        if ($proc !== null && $proc->isRunning()) {
+            $proc->signal(\SIGINT);
+            $this->stopRequested = true;
+            $this->stopDeadline = microtime(true) + self::GRACEFUL_WAIT_SECONDS;
+        }
+    }
+
+    /**
+     * Non-blocking poll: check if stop has finalized. Call repeatedly from POOL.
+     *
+     * @return string|null Path to the finalized WAV file when stop is complete, null otherwise
+     * @throws RuntimeException if the process exited with an error
+     */
+    public function pollStop(): ?string
+    {
+        if (!$this->recording) {
+            return null;
+        }
+
+        $proc = $this->process;
+        $path = $this->currentFilePath;
+
+        if ($proc === null) {
+            $this->recording = false;
+            $this->resetStopState();
+
+            return $path;
+        }
+
+        if (!$proc->isRunning()) {
+            $exitCode = $proc->getExitCode();
+            $weRequestedStop = $this->stopRequested;
+            $this->process = null;
+            $this->recording = false;
+            $this->resetStopState();
+            if ($exitCode !== null && $exitCode !== 0 && !$weRequestedStop) {
+                throw new RuntimeException(sprintf(
+                    'ffmpeg exited unexpectedly with code %d: %s',
+                    $exitCode,
+                    $proc->getErrorOutput() ?: 'no stderr'
+                ));
+            }
+
+            return $path;
+        }
+
+        if ($this->stopRequested && $this->stopDeadline !== null && microtime(true) >= $this->stopDeadline && !$this->sigtermSent) {
+            $proc->signal(\SIGTERM);
+            $this->sigtermSent = true;
+        }
+
+        return null;
+    }
+
+    private function resetStopState(): void
+    {
+        $this->stopRequested = false;
+        $this->stopDeadline = null;
+        $this->sigtermSent = false;
+    }
+
+    /**
+     * Stop recording gracefully (blocking). Sends SIGINT then polls until process has exited.
      *
      * @return string|null The path to the recorded WAV file, or null if not recording
      * @throws RuntimeException if the process had already exited with an error (e.g. crash)
@@ -92,39 +169,10 @@ final class VoiceRecorder
             return $this->currentFilePath;
         }
 
-        $path = $this->currentFilePath;
-        $proc = $this->process;
-
-        if ($proc === null) {
-            $this->recording = false;
-            return $path;
-        }
-
-        if (!$proc->isRunning()) {
-            $this->process = null;
-            $this->recording = false;
-            $exitCode = $proc->getExitCode();
-            if ($exitCode !== null && $exitCode !== 0) {
-                throw new RuntimeException(sprintf(
-                    'ffmpeg exited unexpectedly with code %d: %s',
-                    $exitCode,
-                    $proc->getErrorOutput() ?: 'no stderr'
-                ));
-            }
-            return $path;
-        }
-
-        $proc->signal(\SIGINT);
-        $deadline = microtime(true) + self::GRACEFUL_WAIT_SECONDS;
-        while ($proc->isRunning() && microtime(true) < $deadline) {
+        $this->requestStop();
+        while (($path = $this->pollStop()) === null) {
             usleep(50_000);
         }
-        if ($proc->isRunning()) {
-            $proc->stop(2, \SIGTERM);
-        }
-
-        $this->process = null;
-        $this->recording = false;
 
         return $path;
     }

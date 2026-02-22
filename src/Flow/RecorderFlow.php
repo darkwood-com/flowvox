@@ -4,36 +4,38 @@ declare(strict_types=1);
 
 namespace App\Flow;
 
-use App\IpStrategy\VoiceTransportIpStrategy;
-use App\Message\VoiceControlMessage;
+use App\IpStrategy\VoiceRecorderIpStrategy;
+use App\Model\AudioChunk;
 use App\Model\VoiceControlEvent;
-use Closure;
-use Flow\Flow\Flow;
-use Flow\AsyncHandlerInterface;
+use App\Service\VoiceRecorder;
 use Flow\DriverInterface;
-use Flow\ExceptionInterface;
-use Flow\Ip;
-use Flow\IpStrategyInterface;
-use Flow\Job\YJob;
-use Flow\JobInterface;
-use Symfony\Component\EventDispatcher\EventDispatcher;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface;
-use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
+use Flow\Flow\Flow;
+use Psr\Log\LoggerInterface;
 
 /**
- * @template T1
- * @template T2
+ * Input: VoiceControlEvent (from InputProviderFlow).
+ * Output: AudioChunk (emitted when a recording is finalized after stop).
  *
- * @extends \Flow\Flow\Flow<T1,T2>
+ * @extends Flow<VoiceControlEvent, AudioChunk>
  */
-class RecorderFlow extends Flow
+final class RecorderFlow extends Flow
 {
     public function __construct(
         ?DriverInterface $driver,
+        VoiceRecorder $voiceRecorder,
+        LoggerInterface $logger,
     ) {
-        parent::__construct(static function($data) {
-            return $data;
-        }, null, null, null, null, $driver);
+        $ipStrategy = new VoiceRecorderIpStrategy($voiceRecorder, $logger);
+
+        parent::__construct(
+            static function (VoiceControlEvent|AudioChunk $data): VoiceControlEvent|AudioChunk {
+                return $data;
+            },
+            null,
+            $ipStrategy,
+            null,
+            null,
+            $driver,
+        );
     }
 }

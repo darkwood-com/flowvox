@@ -5,27 +5,21 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Flow\InputProviderFlow;
-use App\Message\VoiceControlMessage;
+use App\Flow\RecorderFlow;
+use App\Model\AudioChunk;
 use App\Model\VoiceControlEvent;
+use App\Service\VoiceRecorder;
 use App\Service\VoiceTransportProvider;
 use App\Service\VoiceWorkerRegistry;
-use Flow\Driver\AmpDriver;
-use Flow\DriverInterface;
+use Psr\Log\LoggerInterface;
 use Flow\Driver\FiberDriver;
-use Flow\ExceptionInterface;
-use Flow\Flow\Flow;
-use Flow\Flow\TransportFlow;
 use Flow\FlowFactory;
-use Flow\Ip;
-use Flow\IpStrategy\LinearIpStrategy;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\EventDispatcher\EventDispatcher;
-use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 
 #[AsCommand(
@@ -40,6 +34,8 @@ final class VoiceWorkerCommand extends Command
     public function __construct(
         private readonly VoiceTransportProvider $transportProvider,
         private readonly VoiceWorkerRegistry $registry,
+        private readonly VoiceRecorder $voiceRecorder,
+        private readonly LoggerInterface $logger,
     ) {
         parent::__construct();
     }
@@ -67,23 +63,34 @@ final class VoiceWorkerCommand extends Command
         $driver = new FiberDriver();
 
         $inputProviderFlow = new InputProviderFlow($driver, $receiver);
-        $displayFlow = static function (VoiceControlEvent $event) use ($sessionId, $io): VoiceControlEvent {
-            $io->writeln(sprintf(
-                '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
-                date('Y-m-d H:i:s'),
-                $sessionId,
-                $event->type->value,
-                $event->at->format(\DateTimeInterface::ATOM),
-                $event->type->value,
-                $event->at->format(\DateTimeInterface::ATOM),
-            ));
+        $displayFlow = static function (VoiceControlEvent|AudioChunk $data) use ($sessionId, $io): VoiceControlEvent|AudioChunk {
+            if ($data instanceof VoiceControlEvent) {
+                $io->writeln(sprintf(
+                    '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
+                    date('Y-m-d H:i:s'),
+                    $sessionId,
+                    $data->type->value,
+                    $data->at->format(\DateTimeInterface::ATOM),
+                    $data->type->value,
+                    $data->at->format(\DateTimeInterface::ATOM),
+                ));
+            } else {
+                $io->writeln(sprintf('[%s] session=%s RecorderFlow emitted AudioChunk (recording finalized)', date('Y-m-d H:i:s'), $sessionId));
+            }
 
-            return $event;
+            return $data;
         };
+        $recorderFlow = new RecorderFlow($driver, $this->voiceRecorder, $this->logger);
 
         $flow = (new FlowFactory())
-            ->create(static function () use ($inputProviderFlow, $displayFlow): \Generator {
+            ->create(static function () use (
+                $inputProviderFlow,
+                $recorderFlow,
+                $displayFlow
+            ): \Generator {
                 yield $inputProviderFlow;
+                yield $displayFlow;
+                yield $recorderFlow;
                 yield $displayFlow;
             }, [
                 'driver' => $driver,
