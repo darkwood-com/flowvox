@@ -6,11 +6,14 @@ namespace App\Command;
 
 use App\Flow\InputProviderFlow;
 use App\Flow\RecorderFlow;
-use App\Model\AudioChunk;
+use App\Flow\TranscribeFlow;
+use App\Model\RecordingFinished;
+use App\Model\TranscriptionChunk;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
 use App\Service\VoiceTransportProvider;
 use App\Service\VoiceWorkerRegistry;
+use App\Service\WhisperCpp;
 use Psr\Log\LoggerInterface;
 use Flow\Driver\FiberDriver;
 use Flow\FlowFactory;
@@ -35,6 +38,7 @@ final class VoiceWorkerCommand extends Command
         private readonly VoiceTransportProvider $transportProvider,
         private readonly VoiceWorkerRegistry $registry,
         private readonly VoiceRecorder $voiceRecorder,
+        private readonly WhisperCpp $whisperCpp,
         private readonly LoggerInterface $logger,
     ) {
         parent::__construct();
@@ -63,7 +67,7 @@ final class VoiceWorkerCommand extends Command
         $driver = new FiberDriver();
 
         $inputProviderFlow = new InputProviderFlow($driver, $receiver);
-        $displayFlow = static function (VoiceControlEvent|AudioChunk $data) use ($sessionId, $io): VoiceControlEvent|AudioChunk {
+        $displayFlow = static function (VoiceControlEvent|RecordingFinished|TranscriptionChunk $data) use ($sessionId, $io): VoiceControlEvent|RecordingFinished|TranscriptionChunk {
             if ($data instanceof VoiceControlEvent) {
                 $io->writeln(sprintf(
                     '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
@@ -74,23 +78,30 @@ final class VoiceWorkerCommand extends Command
                     $data->type->value,
                     $data->at->format(\DateTimeInterface::ATOM),
                 ));
+            } elseif ($data instanceof RecordingFinished) {
+                $io->writeln(sprintf('[%s] session=%s RecorderFlow emitted RecordingFinished wav=%s', date('Y-m-d H:i:s'), $sessionId, $data->wavPath));
             } else {
-                $io->writeln(sprintf('[%s] session=%s RecorderFlow emitted AudioChunk (recording finalized)', date('Y-m-d H:i:s'), $sessionId));
+                $preview = mb_strlen($data->text) > 120 ? mb_substr($data->text, 0, 120) . '…' : $data->text;
+                $io->writeln(sprintf('[%s] session=%s TranscribeFlow emitted TranscriptionChunk: %s', date('Y-m-d H:i:s'), $sessionId, $preview));
             }
 
             return $data;
         };
         $recorderFlow = new RecorderFlow($driver, $this->voiceRecorder, $this->logger);
+        $transcribeFlow = new TranscribeFlow($driver, $this->whisperCpp, $this->logger);
 
         $flow = (new FlowFactory())
             ->create(static function () use (
                 $inputProviderFlow,
                 $recorderFlow,
+                $transcribeFlow,
                 $displayFlow
             ): \Generator {
                 yield $inputProviderFlow;
                 yield $displayFlow;
                 yield $recorderFlow;
+                yield $displayFlow;
+                yield $transcribeFlow;
                 yield $displayFlow;
             }, [
                 'driver' => $driver,

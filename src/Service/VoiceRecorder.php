@@ -19,7 +19,7 @@ use Symfony\Component\Process\Process;
  */
 final class VoiceRecorder
 {
-    private const AVFOUNDATION_INPUT = ':0';
+    private const AVFOUNDATION_INPUT = ':2';
     private const SAMPLE_RATE = 16000;
     private const CHANNELS = 1;
     private const GRACEFUL_WAIT_SECONDS = 3;

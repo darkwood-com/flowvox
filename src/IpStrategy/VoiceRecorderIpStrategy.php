@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\IpStrategy;
 
 use App\Enum\VoiceControlType;
-use App\Model\AudioChunk;
+use App\Model\RecordingFinished;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
 use Flow\Event;
@@ -18,7 +18,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * State machine: IDLE | RECORDING | STOPPING.
- * PUSH receives VoiceControlEvent (START/STOP); POLL keeps strategy active via activeStartIp; POOL runs pollStop and emits AudioChunk when finalized.
+ * PUSH receives VoiceControlEvent (START/STOP); POLL keeps strategy active via activeStartIp; POOL runs pollStop and emits RecordingFinished when finalized.
  *
  * @implements IpStrategyInterface<VoiceControlEvent>
  */
@@ -31,8 +31,8 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
     private string $state = self::STATE_IDLE;
     private ?Ip $activeStartIp = null;
     private ?Ip $queuedStartIp = null;
-    /** @var array<int, AudioChunk> chunk by spl_object_id of the START VoiceControlEvent */
-    private array $chunksByStartEventId = [];
+    /** @var array<int, RecordingFinished> output by spl_object_id of the START VoiceControlEvent */
+    private array $outputByStartEventId = [];
     /** @var list<Ip<VoiceControlEvent>> START ip from push that produced each output */
     private array $outputQueueStartIps = [];
 
@@ -91,19 +91,19 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
     }
 
     /**
-     * Returns the AudioChunk produced for the given START VoiceControlEvent (keyed by instance id).
-     * Removes the chunk from the map after retrieval.
+     * Returns the RecordingFinished produced for the given START VoiceControlEvent (keyed by instance id).
+     * Removes it from the map after retrieval.
      */
-    public function getAudioChunkForStartEvent(VoiceControlEvent $event): AudioChunk
+    public function getRecordingFinishedForStartEvent(VoiceControlEvent $event): RecordingFinished
     {
         $id = spl_object_id($event);
-        $chunk = $this->chunksByStartEventId[$id] ?? null;
-        if ($chunk === null) {
-            throw new \OutOfBoundsException(sprintf('No AudioChunk found for VoiceControlEvent instance %d', $id));
+        $recording = $this->outputByStartEventId[$id] ?? null;
+        if ($recording === null) {
+            throw new \OutOfBoundsException(sprintf('No RecordingFinished found for VoiceControlEvent instance %d', $id));
         }
-        unset($this->chunksByStartEventId[$id]);
+        unset($this->outputByStartEventId[$id]);
 
-        return $chunk;
+        return $recording;
     }
 
     public function pool(PoolEvent $event): void
@@ -111,9 +111,10 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
         if ($this->state === self::STATE_STOPPING) {
             $wavPath = $this->voiceRecorder->pollStop();
             if ($wavPath !== null) {
-                $this->logger->info('POOL -> stop finalized path={path} -> emitted AudioChunk', ['path' => $wavPath]);
+                $recording = new RecordingFinished($wavPath, new \DateTimeImmutable());
+                $this->logger->info('Recorder finished wav={path} -> emitted RecordingFinished', ['path' => $wavPath]);
                 $this->state = self::STATE_IDLE;
-                $this->chunksByStartEventId[spl_object_id($this->activeStartIp->data)] = new AudioChunk();
+                $this->outputByStartEventId[spl_object_id($this->activeStartIp->data)] = $recording;
                 $this->outputQueueStartIps[] = $this->activeStartIp;
                 $this->activeStartIp = null;
 
