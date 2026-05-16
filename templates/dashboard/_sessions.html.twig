@@ -1,0 +1,35 @@
+<table class="table">
+    <thead>
+    <tr>
+        <th>Session</th>
+        <th>Status</th>
+        <th>PID</th>
+        <th>Provider</th>
+        <th>Last heartbeat</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for s in sessions %}
+        <tr>
+            <td><a href="{{ path('session_show', {sessionId: s.id}) }}">{{ s.label ?? s.id }}</a></td>
+            <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+            <td>{{ s.pid }}</td>
+            <td>{{ s.provider }}</td>
+            <td>{{ s.lastHeartbeatAt|date('H:i:s') }}</td>
+            <td class="actions">
+                <form action="{{ path('session_start', {sessionId: s.id}) }}" method="post" data-turbo="true">
+                    <input type="hidden" name="_token" value="{{ csrf_token('session_control') }}">
+                    <button type="submit" class="btn btn-start">START</button>
+                </form>
+                <form action="{{ path('session_stop', {sessionId: s.id}) }}" method="post" data-turbo="true">
+                    <input type="hidden" name="_token" value="{{ csrf_token('session_control') }}">
+                    <button type="submit" class="btn btn-stop">STOP</button>
+                </form>
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="6" class="muted">No active sessions. Run <code>voice:worker</code> first.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>

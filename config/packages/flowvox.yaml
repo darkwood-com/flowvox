@@ -1,0 +1,3 @@
+parameters:
+    flowvox.transcription.default_provider: '%env(string:FLOWVOX_TRANSCRIPTION_PROVIDER)%'
+    openai_key_empty: ''

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\IpStrategy;
 
+use App\Application\Transcription\TranscriptionContext;
+use App\Application\Transcription\TranscriptionProviderRegistry;
+use App\Domain\Enum\VoiceDomainEventType;
 use App\Model\RecordingFinished;
 use App\Model\TranscriptionChunk;
-use App\Service\WhisperCpp;
+use App\Service\WorkerEventEmitter;
 use Flow\Event;
 use Flow\Event\PoolEvent;
 use Flow\Event\PullEvent;
@@ -16,7 +19,7 @@ use Flow\IpStrategyInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * PUSH receives RecordingFinished (recorder output); POLL returns input IP when transcription is done; POOL runs Whisper and stores TranscriptionChunk.
+ * PUSH receives RecordingFinished; POOL runs transcription via configured provider.
  *
  * @implements IpStrategyInterface<RecordingFinished>
  */
@@ -29,8 +32,10 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
     private ?Ip $outputInputIp = null;
 
     public function __construct(
-        private readonly WhisperCpp $whisperCpp,
+        private readonly TranscriptionProviderRegistry $providerRegistry,
+        private readonly string $sessionId,
         private readonly LoggerInterface $logger,
+        private readonly ?WorkerEventEmitter $eventEmitter = null,
     ) {
     }
 
@@ -76,18 +81,34 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
 
             $wavPath = $data->wavPath;
             $this->logger->info('Transcribe started wav={path}', ['path' => $wavPath]);
+            $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => '', 'status' => 'transcribing']);
 
-            $text = $this->whisperCpp->transcribe($wavPath);
+            try {
+                $providerType = $this->providerRegistry->getDefaultType();
+                $provider = $this->providerRegistry->get($providerType);
+                $result = $provider->transcribeFile($wavPath, new TranscriptionContext($this->sessionId, $providerType));
+            } catch (\Throwable $e) {
+                $this->eventEmitter?->emit(VoiceDomainEventType::Error, ['message' => $e->getMessage()]);
+                $this->pending = null;
+                return;
+            }
+
             $at = new \DateTimeImmutable();
-            $chunk = new TranscriptionChunk($text, $at, $wavPath);
+            $chunk = new TranscriptionChunk($result->text, $at, $wavPath);
 
             $this->outputChunk = $chunk;
             $this->outputInputIp = $this->pending;
             $this->pending = null;
 
-            $preview = mb_strlen($text) > self::PREVIEW_LEN
-                ? mb_substr($text, 0, self::PREVIEW_LEN) . '…'
-                : $text;
+            $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionFinal, [
+                'text' => $result->text,
+                'wavPath' => $wavPath,
+                'language' => $result->language,
+            ]);
+
+            $preview = mb_strlen($result->text) > self::PREVIEW_LEN
+                ? mb_substr($result->text, 0, self::PREVIEW_LEN) . '…'
+                : $result->text;
             $this->logger->info('Transcribe done: {preview}', ['preview' => $preview]);
         }
 
@@ -96,10 +117,6 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
         }
     }
 
-    /**
-     * Returns the TranscriptionChunk for the last completed transcription (called by the flow job).
-     * MVP: one output at a time. Clears stored chunk after retrieval.
-     */
     public function getTranscriptionChunk(): TranscriptionChunk
     {
         if ($this->outputChunk === null) {
@@ -107,6 +124,7 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
         }
         $chunk = $this->outputChunk;
         $this->outputChunk = null;
+
         return $chunk;
     }
 }

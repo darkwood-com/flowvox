@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "tabs": [
+      {
+        "title": "Sessions",
+        "path": "/",
+        "icon": "microphone"
+      },
+      {
+        "title": "Transcriptions",
+        "path": "/transcriptions",
+        "icon": "document"
+      },
+      {
+        "title": "Settings",
+        "path": "/settings",
+        "icon": "gear"
+      }
+    ]
+  }
+}

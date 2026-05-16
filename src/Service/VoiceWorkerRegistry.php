@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Domain\Enum\WorkerStatus;
 use App\Entity\VoiceWorkerSession;
 use App\Repository\VoiceWorkerSessionRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -26,6 +27,7 @@ final class VoiceWorkerRegistry
             $this->em->flush();
         }
         $session = new VoiceWorkerSession($sessionId, $pid);
+        $session->setStatus(WorkerStatus::Idle);
         $this->em->persist($session);
         $this->em->flush();
     }

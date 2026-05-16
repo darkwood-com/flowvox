@@ -1,33 +1,27 @@
 # yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 
-# This file is the entry point to configure your own services.
-# Files in the packages/ subdirectory configure your dependencies.
-# See also https://symfony.com/doc/current/service_container/import.html
-
-# Put parameters here that don't need to change on each machine where the app is deployed
-# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
-    whisper_cli_path: ''   # e.g. /path/to/whisper.cpp/build/bin/whisper-cli
-    whisper_model_path: '' # e.g. /path/to/whisper.cpp/models/ggml-base.en.bin
+    whisper_cli_path: ''
+    whisper_model_path: ''
 
 services:
-    # Bind Messenger transport factory and serializer for VoiceTransportProvider
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
     Symfony\Component\Messenger\Transport\TransportFactoryInterface: '@messenger.transport_factory'
     Symfony\Component\Messenger\Transport\Serialization\SerializerInterface: '@messenger.default_serializer'
-    # default configuration for services in *this* file
-    _defaults:
-        autowire: true      # Automatically injects dependencies in your services.
-        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
 
-    # makes classes in src/ available to be used as services
-    # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: '../src/'
         exclude:
             - '../src/IpStrategy/'
             - '../src/Entity/'
             - '../src/Model/'
-            - '../src/Messenger/'
+            - '../src/Domain/Event/'
+            - '../src/Application/Transcription/TranscriptionContext.php'
+            - '../src/Application/Transcription/TranscriptionResult.php'
+            - '../src/Application/Transcription/RealtimeSessionConfig.php'
 
     App\Service\VoiceRecorder:
         arguments:
@@ -38,5 +32,28 @@ services:
             $whisperCliPath: '%env(default:whisper_cli_path:string:WHISPER_CLI_PATH)%'
             $modelPath: '%env(default:whisper_model_path:string:WHISPER_MODEL_PATH)%'
 
-    # add more service definitions when explicit configuration is needed
-    # please note that last definitions always *replace* previous ones
+    App\Service\WorkerEventEmitter:
+        shared: false
+
+    App\Application\Port\VoiceControlPort: '@App\Infrastructure\Messenger\MessengerVoiceControlAdapter'
+    App\Application\Port\VoiceEventPublisherPort: '@App\Infrastructure\Mercure\MercureVoiceEventPublisher'
+
+    App\Infrastructure\Transcription\WhisperCppTranscriptionProvider:
+        tags: ['app.transcription_provider']
+
+    App\Infrastructure\Transcription\OpenAiBatchTranscriptionProvider:
+        tags: ['app.transcription_provider']
+
+    App\Infrastructure\Transcription\OpenAiRealtimeTranscriptionProvider:
+        tags: ['app.transcription_provider']
+
+    App\Infrastructure\Transcription\OpenAiRealtimeAgentProvider:
+        tags: ['app.transcription_provider']
+
+    App\Infrastructure\Transcription\OpenAiRealtimeTranslateProvider:
+        tags: ['app.transcription_provider']
+
+    App\Application\Transcription\TranscriptionProviderRegistry:
+        arguments:
+            $providers: !tagged_iterator app.transcription_provider
+            $defaultProvider: '%flowvox.transcription.default_provider%'

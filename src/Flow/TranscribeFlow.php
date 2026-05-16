@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace App\Flow;
 
+use App\Application\Transcription\TranscriptionProviderRegistry;
 use App\IpStrategy\WhisperTranscribeIpStrategy;
 use App\Model\RecordingFinished;
 use App\Model\TranscriptionChunk;
-use App\Service\WhisperCpp;
+use App\Service\WorkerEventEmitter;
 use Flow\DriverInterface;
 use Flow\Flow\Flow;
 use Psr\Log\LoggerInterface;
 
 /**
  * Input: RecordingFinished (from RecorderFlow).
- * Output: TranscriptionChunk (after Whisper transcribes the WAV).
+ * Output: TranscriptionChunk (after configured provider transcribes the WAV).
  *
  * @extends Flow<RecordingFinished, TranscriptionChunk>
  */
@@ -22,10 +23,12 @@ final class TranscribeFlow extends Flow
 {
     public function __construct(
         ?DriverInterface $driver,
-        WhisperCpp $whisperCpp,
+        TranscriptionProviderRegistry $providerRegistry,
+        string $sessionId,
         LoggerInterface $logger,
+        ?WorkerEventEmitter $eventEmitter = null,
     ) {
-        $ipStrategy = new WhisperTranscribeIpStrategy($whisperCpp, $logger);
+        $ipStrategy = new WhisperTranscribeIpStrategy($providerRegistry, $sessionId, $logger, $eventEmitter);
 
         parent::__construct(
             function (RecordingFinished $data) use ($ipStrategy): TranscriptionChunk {

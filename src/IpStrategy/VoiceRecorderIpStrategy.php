@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\IpStrategy;
 
+use App\Domain\Enum\VoiceDomainEventType;
 use App\Enum\VoiceControlType;
 use App\Model\RecordingFinished;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
+use App\Service\WorkerEventEmitter;
 use Flow\Event;
 use Flow\Event\PoolEvent;
 use Flow\Event\PullEvent;
@@ -39,6 +41,7 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
     public function __construct(
         private readonly VoiceRecorder $voiceRecorder,
         private readonly LoggerInterface $logger,
+        private readonly ?WorkerEventEmitter $eventEmitter = null,
     ) {
     }
 
@@ -61,6 +64,7 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
                 $this->state = self::STATE_RECORDING;
                 $this->activeStartIp = $ip;
                 $this->logger->info('PUSH START -> start recording path={path}', ['path' => $path]);
+                $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStarted, ['wavPath' => $path]);
             } elseif ($this->state === self::STATE_RECORDING) {
                 $this->logger->debug('PUSH START ignored (already recording)');
             } elseif ($this->state === self::STATE_STOPPING) {
@@ -113,6 +117,7 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
             if ($wavPath !== null) {
                 $recording = new RecordingFinished($wavPath, new \DateTimeImmutable());
                 $this->logger->info('Recorder finished wav={path} -> emitted RecordingFinished', ['path' => $wavPath]);
+                $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStopped, ['wavPath' => $wavPath]);
                 $this->state = self::STATE_IDLE;
                 $this->outputByStartEventId[spl_object_id($this->activeStartIp->data)] = $recording;
                 $this->outputQueueStartIps[] = $this->activeStartIp;

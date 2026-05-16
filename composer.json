@@ -11,14 +11,27 @@
         "doctrine/doctrine-bundle": "^3.2.2",
         "doctrine/doctrine-migrations-bundle": "^4.0",
         "doctrine/orm": "^3.6.2",
+        "symfony/ai-bundle": "^0.9.0",
+        "symfony/ai-open-ai-platform": "^0.9.0",
+        "symfony/asset-mapper": "8.0.*",
         "symfony/console": "8.0.*",
         "symfony/doctrine-messenger": "8.0.*",
         "symfony/dotenv": "8.0.*",
         "symfony/flex": "^2.10",
+        "symfony/form": "8.0.*",
         "symfony/framework-bundle": "8.0.*",
+        "symfony/http-client": "8.0.*",
+        "symfony/mercure-bundle": "^0.4.2",
         "symfony/messenger": "8.0.*",
         "symfony/process": "8.0.*",
         "symfony/runtime": "8.0.*",
+        "symfony/security-bundle": "8.0.*",
+        "symfony/security-csrf": "8.0.*",
+        "symfony/serializer": "8.0.*",
+        "symfony/twig-bundle": "8.0.*",
+        "symfony/uid": "8.0.*",
+        "symfony/ux-native": "^3.0",
+        "symfony/ux-turbo": "^3.0",
         "symfony/yaml": "8.0.*"
     },
     "config": {
@@ -55,7 +68,8 @@
     "scripts": {
         "auto-scripts": {
             "cache:clear": "symfony-cmd",
-            "assets:install %PUBLIC_DIR%": "symfony-cmd"
+            "assets:install %PUBLIC_DIR%": "symfony-cmd",
+            "importmap:install": "symfony-cmd"
         },
         "post-install-cmd": [
             "@auto-scripts"

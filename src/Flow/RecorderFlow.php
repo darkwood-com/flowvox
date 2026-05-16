@@ -8,6 +8,7 @@ use App\IpStrategy\VoiceRecorderIpStrategy;
 use App\Model\RecordingFinished;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
+use App\Service\WorkerEventEmitter;
 use Flow\DriverInterface;
 use Flow\Flow\Flow;
 use Psr\Log\LoggerInterface;
@@ -24,8 +25,9 @@ final class RecorderFlow extends Flow
         ?DriverInterface $driver,
         VoiceRecorder $voiceRecorder,
         LoggerInterface $logger,
+        ?WorkerEventEmitter $eventEmitter = null,
     ) {
-        $ipStrategy = new VoiceRecorderIpStrategy($voiceRecorder, $logger);
+        $ipStrategy = new VoiceRecorderIpStrategy($voiceRecorder, $logger, $eventEmitter);
 
         parent::__construct(
             function (VoiceControlEvent $data) use ($ipStrategy): RecordingFinished {

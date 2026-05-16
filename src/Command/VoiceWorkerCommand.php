@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Application\Transcription\TranscriptionProviderRegistry;
+use App\Domain\Enum\VoiceDomainEventType;
 use App\Flow\InputProviderFlow;
 use App\Flow\RecorderFlow;
 use App\Flow\TranscribeFlow;
@@ -13,10 +15,10 @@ use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
 use App\Service\VoiceTransportProvider;
 use App\Service\VoiceWorkerRegistry;
-use App\Service\WhisperCpp;
-use Psr\Log\LoggerInterface;
+use App\Service\WorkerEventEmitter;
 use Flow\Driver\FiberDriver;
 use Flow\FlowFactory;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -38,7 +40,8 @@ final class VoiceWorkerCommand extends Command
         private readonly VoiceTransportProvider $transportProvider,
         private readonly VoiceWorkerRegistry $registry,
         private readonly VoiceRecorder $voiceRecorder,
-        private readonly WhisperCpp $whisperCpp,
+        private readonly TranscriptionProviderRegistry $providerRegistry,
+        private readonly WorkerEventEmitter $eventEmitter,
         private readonly LoggerInterface $logger,
     ) {
         parent::__construct();
@@ -55,6 +58,7 @@ final class VoiceWorkerCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $sessionId = $input->getOption('session') ?? $this->generateSessionId();
 
+        $this->eventEmitter->bindSession($sessionId);
         $this->registry->register($sessionId, getmypid() ?: 0);
         $io->info(sprintf('Registered session "%s" (PID %d). Consuming...', $sessionId, getmypid()));
 
@@ -67,14 +71,12 @@ final class VoiceWorkerCommand extends Command
         $driver = new FiberDriver();
 
         $inputProviderFlow = new InputProviderFlow($driver, $receiver);
-        $displayFlow = static function (VoiceControlEvent|RecordingFinished|TranscriptionChunk $data) use ($sessionId, $io): VoiceControlEvent|RecordingFinished|TranscriptionChunk {
+        $displayFlow = function (VoiceControlEvent|RecordingFinished|TranscriptionChunk $data) use ($sessionId, $io): VoiceControlEvent|RecordingFinished|TranscriptionChunk {
             if ($data instanceof VoiceControlEvent) {
                 $io->writeln(sprintf(
-                    '[%s] session=%s received type=%s at=%s -> InputProviderFlow produced type=%s at=%s',
+                    '[%s] session=%s received type=%s at=%s',
                     date('Y-m-d H:i:s'),
                     $sessionId,
-                    $data->type->value,
-                    $data->at->format(\DateTimeInterface::ATOM),
                     $data->type->value,
                     $data->at->format(\DateTimeInterface::ATOM),
                 ));
@@ -87,8 +89,8 @@ final class VoiceWorkerCommand extends Command
 
             return $data;
         };
-        $recorderFlow = new RecorderFlow($driver, $this->voiceRecorder, $this->logger);
-        $transcribeFlow = new TranscribeFlow($driver, $this->whisperCpp, $this->logger);
+        $recorderFlow = new RecorderFlow($driver, $this->voiceRecorder, $this->logger, $this->eventEmitter);
+        $transcribeFlow = new TranscribeFlow($driver, $this->providerRegistry, $sessionId, $this->logger, $this->eventEmitter);
 
         $flow = (new FlowFactory())
             ->create(static function () use (
@@ -110,6 +112,7 @@ final class VoiceWorkerCommand extends Command
         $cleanupInputProvider = $inputProviderFlow->tick(self::INPUT_PROVIDER_INTERVALE_SECONDS);
         $cleanupHeartbeat = $driver->tick(self::HEARTBEAT_INTERVAL_SECONDS, function () use ($sessionId): void {
             $this->registry->heartbeat($sessionId);
+            $this->eventEmitter->emit(VoiceDomainEventType::Heartbeat);
         });
 
         $onStop = function () use ($cleanupInputProvider, $cleanupHeartbeat, $sessionId, $io): void {

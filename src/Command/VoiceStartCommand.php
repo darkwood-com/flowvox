@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Application\UseCase\SendVoiceControl;
 use App\Enum\VoiceControlType;
-use App\Message\VoiceControlMessage;
-use App\Service\VoiceTransportProvider;
-use App\Service\VoiceWorkerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Messenger\Envelope;
 
 #[AsCommand(
     name: 'voice:start',
@@ -23,8 +20,7 @@ use Symfony\Component\Messenger\Envelope;
 final class VoiceStartCommand extends Command
 {
     public function __construct(
-        private readonly VoiceTransportProvider $transportProvider,
-        private readonly VoiceWorkerRegistry $registry,
+        private readonly SendVoiceControl $sendVoiceControl,
     ) {
         parent::__construct();
     }
@@ -39,34 +35,21 @@ final class VoiceStartCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $sessionOption = $input->getOption('session');
 
-        $sessions = $sessionOption !== null
-            ? [['id' => $sessionOption]]
-            : $this->registry->listActiveSessions(30);
+        $sent = $this->sendVoiceControl->execute(VoiceControlType::START, $sessionOption);
 
-        if ($sessions === []) {
+        if ($sent === []) {
             $io->warning($sessionOption !== null
                 ? sprintf('No active session with id "%s".', $sessionOption)
                 : 'No active sessions to broadcast to.');
             return Command::SUCCESS;
         }
 
-        $message = new VoiceControlMessage(VoiceControlType::START, new \DateTimeImmutable());
-        $envelope = Envelope::wrap($message);
-        $sent = 0;
-
-        foreach ($sessions as $session) {
-            $sessionId = $session['id'];
-            try {
-                $transport = $this->transportProvider->getTransportForSession($sessionId);
-                $transport->send($envelope);
-                $io->writeln(sprintf('  Sent START -> %s', $sessionId));
-                $sent++;
-            } catch (\Throwable $e) {
-                $io->error(sprintf('  Failed to send to %s: %s', $sessionId, $e->getMessage()));
-            }
+        foreach ($sent as $sessionId) {
+            $io->writeln(sprintf('  Sent START -> %s', $sessionId));
         }
 
-        $io->success(sprintf('Targeted %d session(s), sent %d.', count($sessions), $sent));
+        $io->success(sprintf('Sent START to %d session(s).', \count($sent)));
+
         return Command::SUCCESS;
     }
 }

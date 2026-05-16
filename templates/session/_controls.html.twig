@@ -1,0 +1,13 @@
+<div class="controls">
+    {% if flash is defined %}
+        <p class="flash flash-info">{{ flash }}</p>
+    {% endif %}
+    <form action="{{ path('session_start', {sessionId: sessionId}) }}" method="post">
+        <input type="hidden" name="_token" value="{{ csrf_token('session_control') }}">
+        <button type="submit" class="btn btn-start">START</button>
+    </form>
+    <form action="{{ path('session_stop', {sessionId: sessionId}) }}" method="post">
+        <input type="hidden" name="_token" value="{{ csrf_token('session_control') }}">
+        <button type="submit" class="btn btn-stop">STOP</button>
+    </form>
+</div>

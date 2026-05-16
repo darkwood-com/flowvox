@@ -1,0 +1,38 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Session {{ session.id }} — Flowvox{% endblock %}
+
+{% block body %}
+<h1>Session <code>{{ session.id }}</code></h1>
+<p>
+    <span class="badge badge-{{ session.status.value }}" id="session-status-badge">{{ session.status.value }}</span>
+    <span class="muted">PID {{ session.pid }} · {{ session.provider.value }}</span>
+</p>
+
+<turbo-frame id="session-controls">
+    {% include 'session/_controls.html.twig' with {sessionId: session.id} %}
+</turbo-frame>
+
+<section
+    class="live-transcript"
+    data-controller="live-transcript"
+    data-live-transcript-url-value="{{ mercure(mercure_topic) }}"
+>
+    <h2>Live transcription</h2>
+    <div id="live-transcript-content" data-live-transcript-target="content">
+        <p class="muted">Waiting for events…</p>
+    </div>
+</section>
+
+<h2>History</h2>
+<ul class="list">
+    {% for t in transcriptions %}
+        <li>
+            <a href="{{ path('transcription_show', {id: t.id}) }}">{{ t.createdAt|date('Y-m-d H:i:s') }}</a>
+            — {{ t.fullText|length > 100 ? t.fullText|slice(0, 100) ~ '…' : t.fullText }}
+        </li>
+    {% else %}
+        <li class="muted">No transcriptions for this session yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

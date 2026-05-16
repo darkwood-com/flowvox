@@ -1,0 +1,27 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Transcription — Flowvox{% endblock %}
+
+{% block body %}
+<h1>Transcription</h1>
+<p class="muted">{{ transcription.createdAt|date('Y-m-d H:i:s') }} · {{ transcription.provider.value }}</p>
+
+<article class="transcript-body">
+    {{ transcription.fullText|nl2br }}
+</article>
+
+<h2>Export</h2>
+<ul class="export-links">
+    {% for format in ['txt', 'md', 'srt', 'vtt'] %}
+        <li><a href="{{ path('transcription_export', {id: transcription.id, format: format}) }}">{{ format|upper }}</a></li>
+        <li><a href="{{ path('transcription_export', {id: transcription.id, format: format, remove_fillers: 1}) }}">{{ format|upper }} (no fillers)</a></li>
+    {% endfor %}
+</ul>
+
+<h2>Segments</h2>
+<ol>
+    {% for segment in transcription.segments %}
+        <li{% if not segment.isFinal %} class="partial"{% endif %}>{{ segment.text }}</li>
+    {% endfor %}
+</ol>
+{% endblock %}

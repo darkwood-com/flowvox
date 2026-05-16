@@ -1,0 +1,24 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Dashboard — Flowvox{% endblock %}
+
+{% block body %}
+<h1>Voice sessions</h1>
+<p class="muted">Active workers (heartbeat &lt; 30s). Start a worker with <code>php bin/console voice:worker --session=ID</code>.</p>
+
+<div id="dashboard-sessions" data-controller="session-status" data-session-status-dashboard-value="true">
+    {% include 'dashboard/_sessions.html.twig' %}
+</div>
+
+<h2>Recent transcriptions</h2>
+<ul class="list">
+    {% for t in recentTranscriptions %}
+        <li>
+            <a href="{{ path('transcription_show', {id: t.id}) }}">{{ t.createdAt|date('Y-m-d H:i') }}</a>
+            <span class="muted">{{ t.fullText|length > 80 ? t.fullText|slice(0, 80) ~ '…' : t.fullText }}</span>
+        </li>
+    {% else %}
+        <li class="muted">No transcriptions yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

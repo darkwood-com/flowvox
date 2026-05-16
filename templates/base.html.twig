@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Flowvox{% endblock %}</title>
+    <link rel="icon" href="{{ asset('logo.png') }}">
+    {% block stylesheets %}
+        <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
+    {% endblock %}
+    {% block javascripts %}
+        {% block importmap %}{{ importmap('app') }}{% endblock %}
+    {% endblock %}
+</head>
+<body class="{% if ux_is_native() %}native-app{% endif %}">
+<header class="header">
+    <a href="{{ path('dashboard') }}" class="brand">Flowvox</a>
+    <nav>
+        <a href="{{ path('dashboard') }}">Sessions</a>
+        <a href="{{ path('transcription_index') }}">Transcriptions</a>
+        <a href="{{ path('settings') }}">Settings</a>
+    </nav>
+</header>
+<main class="main">
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="flash flash-{{ label }}">{{ message }}</div>
+        {% endfor %}
+    {% endfor %}
+    {% block body %}{% endblock %}
+</main>
+</body>
+</html>

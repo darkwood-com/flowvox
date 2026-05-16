@@ -1,0 +1,22 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Transcriptions — Flowvox{% endblock %}
+
+{% block body %}
+<h1>Search transcriptions</h1>
+<form method="get" action="{{ path('transcription_index') }}" class="search-form">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search text…" class="input">
+    <button type="submit" class="btn">Search</button>
+</form>
+
+<ul class="list">
+    {% for t in results %}
+        <li>
+            <a href="{{ path('transcription_show', {id: t.id}) }}">{{ t.createdAt|date('Y-m-d H:i') }}</a>
+            <p>{{ t.fullText|length > 200 ? t.fullText|slice(0, 200) ~ '…' : t.fullText }}</p>
+        </li>
+    {% else %}
+        <li class="muted">{% if query %}No results for "{{ query }}".{% else %}Enter a search query.{% endif %}</li>
+    {% endfor %}
+</ul>
+{% endblock %}

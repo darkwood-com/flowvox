@@ -1,0 +1,24 @@
+<turbo-stream action="append" target="live-transcript-content">
+    <template>
+        <p class="event event-{{ event.type.value }}">
+            <time>{{ event.occurredAt|date('H:i:s') }}</time>
+            <strong>{{ event.type.value }}</strong>
+            {% if event.payload.text is defined %}
+                {{ event.payload.text }}
+            {% elseif event.payload.wavPath is defined %}
+                <code>{{ event.payload.wavPath }}</code>
+            {% elseif event.payload.message is defined %}
+                {{ event.payload.message }}
+            {% endif %}
+        </p>
+    </template>
+</turbo-stream>
+{% if event.type.value in ['recording_started', 'recording_stopped', 'transcription_final', 'error'] %}
+<turbo-stream action="replace" target="session-status-badge">
+    <template>
+        <span class="badge badge-{{ event.type.value == 'transcription_final' ? 'idle' : (event.type.value == 'recording_started' ? 'recording' : (event.type.value == 'error' ? 'error' : 'stopping')) }}" id="session-status-badge">
+            {{ event.type.value == 'transcription_final' ? 'idle' : (event.type.value == 'recording_started' ? 'recording' : (event.type.value == 'error' ? 'error' : event.type.value|replace({'_': ' '}))) }}
+        </span>
+    </template>
+</turbo-stream>
+{% endif %}
