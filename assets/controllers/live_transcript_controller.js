@@ -12,7 +12,8 @@ export default class extends Controller {
             return;
         }
 
-        this.source = new EventSource(this.urlValue);
+        // Send mercureAuthorization cookie (set by Twig mercure() with subscribe option)
+        this.source = new EventSource(this.urlValue, { withCredentials: true });
         this.source.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);

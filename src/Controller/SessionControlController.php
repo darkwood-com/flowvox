@@ -20,8 +20,8 @@ final class SessionControlController extends AbstractController
     {
         $sent = $sendVoiceControl->execute(VoiceControlType::START, $sessionId);
 
-        if ($request->headers->get('Turbo-Frame')) {
-            return $this->render('session/_controls.html.twig', [
+        if ($request->headers->get('Turbo-Frame') === 'session-controls') {
+            return $this->render('session/_controls_frame.html.twig', [
                 'sessionId' => $sessionId,
                 'flash' => $sent !== [] ? 'START sent' : 'No active worker for this session',
             ]);
@@ -38,8 +38,8 @@ final class SessionControlController extends AbstractController
     {
         $sent = $sendVoiceControl->execute(VoiceControlType::STOP, $sessionId);
 
-        if ($request->headers->get('Turbo-Frame')) {
-            return $this->render('session/_controls.html.twig', [
+        if ($request->headers->get('Turbo-Frame') === 'session-controls') {
+            return $this->render('session/_controls_frame.html.twig', [
                 'sessionId' => $sessionId,
                 'flash' => $sent !== [] ? 'STOP sent' : 'No active worker for this session',
             ]);

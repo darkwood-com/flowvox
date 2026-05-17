@@ -9,9 +9,7 @@
     <span class="muted">PID {{ session.pid }} · {{ session.provider.value }}</span>
 </p>
 
-<turbo-frame id="session-controls">
-    {% include 'session/_controls.html.twig' with {sessionId: session.id} %}
-</turbo-frame>
+{% include 'session/_controls_frame.html.twig' with {sessionId: session.id} %}
 
 {% if whisperStreamMode %}
 <p class="hint">Stream mode: speak after START — text appears in segments (VAD). Click STOP to finalize.</p>
@@ -20,7 +18,7 @@
 <section
     class="live-transcript"
     data-controller="live-transcript"
-    data-live-transcript-url-value="{{ mercure(mercure_topic) }}"
+    data-live-transcript-url-value="{{ mercure(mercure_topic, { subscribe: mercure_topic }) }}"
 >
     <h2>Live transcription</h2>
     <div id="live-transcript-content" data-live-transcript-target="content">
