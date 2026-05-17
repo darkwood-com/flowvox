@@ -115,7 +115,7 @@ OPENAI_API_KEY=sk-...
 |-------|-------------|
 | `whisper_cpp` | Local whisper.cpp batch after STOP (default, private) |
 | `whisper_cpp_stream` | Local whisper-stream (use with `FLOWVOX_WHISPER_MODE=stream`) |
-| `openai_batch` | OpenAI Whisper via Symfony AI |
+| `openai_batch` | OpenAI `/v1/audio/transcriptions` (default model: `gpt-4o-transcribe`, see `OPENAI_TRANSCRIPTION_MODEL`) |
 | `openai_realtime_whisper` | OpenAI Realtime API (streaming partials) |
 
 ## Voice worker MVP – multi-terminal test

@@ -9,7 +9,7 @@ namespace App\Service\WhisperStream;
  */
 final class WhisperStreamOutputParser
 {
-    private int $lastCompletedIteration = 0;
+    private int $lastCompletedIteration = -1;
 
     private ?int $currentIteration = null;
 
@@ -18,6 +18,11 @@ final class WhisperStreamOutputParser
     /** @var array<int, string> */
     private array $blocks = [];
 
+    /** @var array<int, string> */
+    private array $lastPreviewByIteration = [];
+
+    private ?string $lastSlidingPreview = null;
+
     /**
      * @return list<string> New segment texts detected in this chunk
      */
@@ -25,6 +30,12 @@ final class WhisperStreamOutputParser
     {
         if ($chunk === '') {
             return [];
+        }
+
+        $chunk = preg_replace('/\x1b\[[0-9;?]*[ -\/]*[@-~]/', '', $chunk) ?? $chunk;
+        if (!str_contains($chunk, "\n") && str_contains($chunk, "\r")) {
+            $parts = explode("\r", $chunk);
+            $chunk = (string) end($parts);
         }
 
         $newPartials = [];
@@ -36,7 +47,7 @@ final class WhisperStreamOutputParser
                 continue;
             }
 
-            if (preg_match('/^### Transcription (\d+) START/', $line, $m)) {
+            if (preg_match('/^### Transcription (\d+) START\b/', $line, $m)) {
                 $this->currentIteration = (int) $m[1];
                 if (!isset($this->blocks[$this->currentIteration])) {
                     $this->blocks[$this->currentIteration] = '';
@@ -44,16 +55,18 @@ final class WhisperStreamOutputParser
                 continue;
             }
 
-            if (preg_match('/^### Transcription (\d+) END/', $line, $m)) {
+            if (preg_match('/^### Transcription (\d+) END\b/', $line, $m)) {
                 $iteration = (int) $m[1];
                 if (isset($this->blocks[$iteration])) {
                     $blockText = trim($this->blocks[$iteration]);
                     if ($blockText !== '' && $iteration > $this->lastCompletedIteration) {
                         $this->lastCompletedIteration = $iteration;
                         $this->accumulatedText = trim($this->accumulatedText . ' ' . $blockText);
-                        $newPartials[] = $blockText;
+                        if ($blockText !== ($this->lastPreviewByIteration[$iteration] ?? '')) {
+                            $newPartials[] = $blockText;
+                        }
                     }
-                    unset($this->blocks[$iteration]);
+                    unset($this->blocks[$iteration], $this->lastPreviewByIteration[$iteration]);
                 }
                 if ($this->currentIteration === $iteration) {
                     $this->currentIteration = null;
@@ -71,6 +84,18 @@ final class WhisperStreamOutputParser
                     $this->blocks[$iteration] = '';
                 }
                 $this->blocks[$iteration] = trim($this->blocks[$iteration] . ' ' . $text);
+
+                $preview = $this->blocks[$iteration];
+                if ($preview !== ($this->lastPreviewByIteration[$iteration] ?? '')) {
+                    $this->lastPreviewByIteration[$iteration] = $preview;
+                    $newPartials[] = $preview;
+                }
+                continue;
+            }
+
+            if (strlen($line) > 1 && $line !== ($this->lastSlidingPreview ?? '')) {
+                $this->lastSlidingPreview = $line;
+                $newPartials[] = $line;
             }
         }
 
@@ -89,9 +114,11 @@ final class WhisperStreamOutputParser
 
     public function reset(): void
     {
-        $this->lastCompletedIteration = 0;
+        $this->lastCompletedIteration = -1;
         $this->currentIteration = null;
         $this->accumulatedText = '';
         $this->blocks = [];
+        $this->lastPreviewByIteration = [];
+        $this->lastSlidingPreview = null;
     }
 }

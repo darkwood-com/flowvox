@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Domain\Enum\TranscriptionProviderType;
 use App\Domain\Enum\WorkerStatus;
 use App\Entity\VoiceWorkerSession;
 use App\Repository\VoiceWorkerSessionRepository;
@@ -19,7 +20,7 @@ final class VoiceWorkerRegistry
     ) {
     }
 
-    public function register(string $sessionId, int $pid): void
+    public function register(string $sessionId, int $pid, TranscriptionProviderType $provider): void
     {
         $existing = $this->repository->find($sessionId);
         if ($existing instanceof VoiceWorkerSession) {
@@ -28,6 +29,7 @@ final class VoiceWorkerRegistry
         }
         $session = new VoiceWorkerSession($sessionId, $pid);
         $session->setStatus(WorkerStatus::Idle);
+        $session->setProvider($provider);
         $this->em->persist($session);
         $this->em->flush();
     }

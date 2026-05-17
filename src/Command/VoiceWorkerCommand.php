@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Application\Transcription\TranscriptionProviderRegistry;
+use App\Domain\Enum\TranscriptionProviderType;
 use App\Domain\Enum\VoiceDomainEventType;
+use App\Infrastructure\Transcription\OpenAiRealtimeTranscriptionProvider;
 use App\Flow\InputProviderFlow;
 use App\Flow\RecorderFlow;
 use App\Flow\TranscribeFlow;
@@ -44,9 +46,11 @@ final class VoiceWorkerCommand extends Command
         private readonly VoiceRecorder $voiceRecorder,
         private readonly WhisperStreamRunner $whisperStreamRunner,
         private readonly TranscriptionProviderRegistry $providerRegistry,
+        private readonly OpenAiRealtimeTranscriptionProvider $openAiRealtimeProvider,
         private readonly WorkerEventEmitter $eventEmitter,
         private readonly LoggerInterface $logger,
         private readonly string $whisperMode,
+        private readonly string $whisperLanguage,
     ) {
         parent::__construct();
     }
@@ -63,8 +67,15 @@ final class VoiceWorkerCommand extends Command
         $sessionId = $input->getOption('session') ?? $this->generateSessionId();
 
         $this->eventEmitter->bindSession($sessionId);
-        $this->registry->register($sessionId, getmypid() ?: 0);
-        $io->info(sprintf('Registered session "%s" (PID %d). Consuming...', $sessionId, getmypid()));
+        $provider = $this->providerRegistry->getDefaultType();
+        $this->registry->register($sessionId, getmypid() ?: 0, $provider);
+        $io->info(sprintf(
+            'Registered session "%s" (PID %d, provider %s, whisper %s). Consuming...',
+            $sessionId,
+            getmypid(),
+            $provider->value,
+            $this->whisperMode,
+        ));
 
         $receiver = $this->transportProvider->getTransportForSession($sessionId);
         if (!$receiver instanceof ReceiverInterface) {
@@ -93,8 +104,11 @@ final class VoiceWorkerCommand extends Command
 
             return $data;
         };
-        $useWhisperStream = WhisperMode::fromEnv($this->whisperMode) === WhisperMode::Stream;
-        if ($useWhisperStream) {
+        $useWhisperStream = WhisperMode::fromEnv($this->whisperMode) === WhisperMode::Stream
+            && $provider !== TranscriptionProviderType::OpenAiRealtimeWhisper;
+        if ($provider === TranscriptionProviderType::OpenAiRealtimeWhisper) {
+            $io->note('OpenAI Realtime: ffmpeg mic (24 kHz PCM) → WebSocket transcription.');
+        } elseif ($useWhisperStream) {
             $io->note('Whisper stream mode: microphone captured by whisper-stream (SDL2).');
         }
         $recorderFlow = new RecorderFlow(
@@ -103,10 +117,20 @@ final class VoiceWorkerCommand extends Command
             $this->logger,
             $useWhisperStream,
             $this->whisperStreamRunner,
+            $this->providerRegistry,
+            $this->openAiRealtimeProvider,
             $sessionId,
+            $this->whisperLanguage,
             $this->eventEmitter,
         );
-        $transcribeFlow = new TranscribeFlow($driver, $this->providerRegistry, $sessionId, $this->logger, $this->eventEmitter);
+        $transcribeFlow = new TranscribeFlow(
+            $driver,
+            $this->providerRegistry,
+            $sessionId,
+            $this->logger,
+            $this->whisperLanguage,
+            $this->eventEmitter,
+        );
 
         $flow = (new FlowFactory())
             ->create(static function () use (
@@ -131,7 +155,30 @@ final class VoiceWorkerCommand extends Command
             $this->eventEmitter->emit(VoiceDomainEventType::Heartbeat);
         });
 
-        $onStop = function () use ($cleanupInputProvider, $cleanupHeartbeat, $sessionId, $io): void {
+        $cleanupStreamPoll = null;
+        if ($useWhisperStream) {
+            $cleanupStreamPoll = $driver->tick(1, function () use ($sessionId): void {
+                static $lastPollAt = 0.0;
+                $now = microtime(true);
+                if ($now - $lastPollAt < 0.25) {
+                    return;
+                }
+                $lastPollAt = $now;
+
+                $runner = $this->whisperStreamRunner;
+                if (!$runner->isRunning()) {
+                    return;
+                }
+                $poll = $runner->poll();
+                foreach ($poll->newPartials as $partial) {
+                    $this->logger->debug('Stream partial: {text}', ['text' => $partial]);
+                    $this->eventEmitter->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => $partial]);
+                }
+            });
+        }
+
+        $onStop = function () use ($cleanupInputProvider, $cleanupHeartbeat, $cleanupStreamPoll, $sessionId, $io): void {
+            $cleanupStreamPoll?->invoke();
             $cleanupHeartbeat();
             $cleanupInputProvider();
 

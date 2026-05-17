@@ -21,6 +21,7 @@ final class VoiceRecorder
 {
     private const DEFAULT_AVFOUNDATION_AUDIO_DEVICE = 2;
     private const SAMPLE_RATE = 16000;
+    private const OPENAI_REALTIME_SAMPLE_RATE = 24000;
     private const CHANNELS = 1;
     private const GRACEFUL_WAIT_SECONDS = 3;
 
@@ -35,6 +36,11 @@ final class VoiceRecorder
     private ?float $stopDeadline = null;
     /** Set after SIGTERM has been sent (non-blocking stop flow). */
     private bool $sigtermSent = false;
+
+    private bool $pcmStreamMode = false;
+
+    /** @var string Binary PCM s16le captured in pcm stream mode */
+    private string $pcmBuffer = '';
 
     public function __construct(
         private readonly string $projectDir,
@@ -89,6 +95,66 @@ final class VoiceRecorder
     }
 
     /**
+     * Stream mono PCM s16le from the microphone (for OpenAI Realtime). Also buffers audio to write a WAV on stop.
+     */
+    public function startPcmStream(): void
+    {
+        if ($this->recording) {
+            throw new RuntimeException('VoiceRecorder is already recording.');
+        }
+
+        if (!self::isFfmpegAvailable($this->ffmpegPath)) {
+            throw new RuntimeException('ffmpeg is not available.');
+        }
+
+        $this->pcmBuffer = '';
+        $this->pcmStreamMode = true;
+        $path = $this->createDefaultOutputPath();
+        $dir = dirname($path);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+            throw new RuntimeException(sprintf('Cannot create voice output directory: %s', $dir));
+        }
+
+        $command = $this->buildFfmpegPcmStreamCommand();
+        $this->process = new Process($command, null, null, null, null);
+        $this->process->setTimeout(null);
+        $this->process->start();
+
+        if (!$this->process->isRunning()) {
+            $err = $this->process->getErrorOutput() ?: 'process exited immediately';
+            $this->process = null;
+            $this->pcmStreamMode = false;
+            throw new RuntimeException(sprintf('Failed to start ffmpeg PCM stream: %s', $err));
+        }
+
+        $this->recording = true;
+        $this->currentFilePath = $path;
+        $this->startedAt = new \DateTimeImmutable();
+    }
+
+    /**
+     * @return string Raw PCM bytes read since the last poll (may be empty)
+     */
+    public function readPcmChunk(): string
+    {
+        if (!$this->recording || !$this->pcmStreamMode || $this->process === null) {
+            return '';
+        }
+
+        $chunk = $this->process->getIncrementalOutput();
+        if ($chunk !== '') {
+            $this->pcmBuffer .= $chunk;
+        }
+
+        return $chunk;
+    }
+
+    public function isPcmStreamMode(): bool
+    {
+        return $this->pcmStreamMode;
+    }
+
+    /**
      * Request stop without blocking. Sends SIGINT once; POOL will call pollStop() until finalized.
      */
     public function requestStop(): void
@@ -129,6 +195,10 @@ final class VoiceRecorder
         if (!$proc->isRunning()) {
             $exitCode = $proc->getExitCode();
             $weRequestedStop = $this->stopRequested;
+            $remaining = $proc->getIncrementalOutput();
+            if ($remaining !== '') {
+                $this->pcmBuffer .= $remaining;
+            }
             $this->process = null;
             $this->recording = false;
             $this->resetStopState();
@@ -138,6 +208,11 @@ final class VoiceRecorder
                     $exitCode,
                     $proc->getErrorOutput() ?: 'no stderr'
                 ));
+            }
+
+            if ($this->pcmStreamMode && $path !== null) {
+                $this->writePcmBufferToWav($path, self::OPENAI_REALTIME_SAMPLE_RATE);
+                $this->pcmStreamMode = false;
             }
 
             return $path;
@@ -156,6 +231,8 @@ final class VoiceRecorder
         $this->stopRequested = false;
         $this->stopDeadline = null;
         $this->sigtermSent = false;
+        $this->pcmStreamMode = false;
+        $this->pcmBuffer = '';
     }
 
     /**
@@ -243,5 +320,53 @@ final class VoiceRecorder
     private function buildAvfoundationInput(): string
     {
         return ':' . $this->avfoundationAudioDevice;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildFfmpegPcmStreamCommand(): array
+    {
+        $ffmpeg = $this->ffmpegPath ?? 'ffmpeg';
+
+        return [
+            $ffmpeg,
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-f', 'avfoundation',
+            '-i', $this->buildAvfoundationInput(),
+            '-ac', '1',
+            '-ar', (string) self::OPENAI_REALTIME_SAMPLE_RATE,
+            '-f', 's16le',
+            '-acodec', 'pcm_s16le',
+            'pipe:1',
+        ];
+    }
+
+    private function writePcmBufferToWav(string $path, int $sampleRate): void
+    {
+        if ($this->pcmBuffer === '') {
+            return;
+        }
+
+        $dataSize = \strlen($this->pcmBuffer);
+        $header = pack(
+            'a4V a4 a4 V vv V vv V a4 V',
+            'RIFF',
+            36 + $dataSize,
+            'WAVE',
+            'fmt ',
+            16,
+            1,
+            1,
+            $sampleRate,
+            $sampleRate * 2,
+            2,
+            16,
+            'data',
+            $dataSize,
+        );
+
+        file_put_contents($path, $header . $this->pcmBuffer);
     }
 }

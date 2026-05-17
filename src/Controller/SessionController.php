@@ -19,11 +19,17 @@ final class SessionController extends AbstractController
             throw $this->createNotFoundException(sprintf('Session "%s" not found.', $sessionId));
         }
 
+        $configuredProvider = $_ENV['FLOWVOX_TRANSCRIPTION_PROVIDER'] ?? 'whisper_cpp';
+
         return $this->render('session/show.html.twig', [
             'session' => $detail['session'],
             'transcriptions' => $detail['transcriptions'],
             'mercure_topic' => '/voice/sessions/' . $sessionId,
-            'whisperStreamMode' => ($_ENV['FLOWVOX_WHISPER_MODE'] ?? 'batch') === 'stream',
+            'configuredProvider' => $configuredProvider,
+            'whisperStreamMode' => ($_ENV['FLOWVOX_WHISPER_MODE'] ?? 'batch') === 'stream'
+                && $configuredProvider !== 'openai_realtime_whisper',
+            'openAiRealtimeMode' => $configuredProvider === 'openai_realtime_whisper',
+            'whisperStreamStepMs' => (int) ($_ENV['WHISPER_STREAM_STEP_MS'] ?? 500),
         ]);
     }
 }

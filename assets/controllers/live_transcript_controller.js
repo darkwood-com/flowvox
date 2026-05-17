@@ -1,11 +1,13 @@
 import { Controller } from '@hotwired/stimulus';
+import { renderStreamMessage } from '@hotwired/turbo';
 
 export default class extends Controller {
     static targets = ['content'];
     static values = { url: String };
 
     connect() {
-        this.partialBlocks = [];
+        this.completedBlocks = [];
+        this.currentPreview = '';
         this.liveLine = null;
 
         if (!this.hasUrlValue) {
@@ -15,14 +17,24 @@ export default class extends Controller {
         // Send mercureAuthorization cookie (set by Twig mercure() with subscribe option)
         this.source = new EventSource(this.urlValue, { withCredentials: true });
         this.source.onmessage = (event) => {
+            const raw = event.data;
+            if (typeof raw === 'string' && raw.includes('<turbo-stream')) {
+                renderStreamMessage(raw);
+                return;
+            }
+
             try {
-                const data = JSON.parse(event.data);
+                const data = JSON.parse(raw);
                 if (data.type) {
                     this.appendJsonEvent(data);
                 }
             } catch {
-                // Turbo stream HTML handled by Turbo
+                // ignore non-JSON payloads
             }
+        };
+
+        this.source.onerror = () => {
+            console.warn('Mercure EventSource error — check hub URL and mercureAuthorization cookie');
         };
     }
 
@@ -31,8 +43,12 @@ export default class extends Controller {
     }
 
     appendJsonEvent(data) {
+        if (data.type === 'heartbeat') {
+            return;
+        }
+
         if (data.type === 'transcription_partial' && data.payload?.text) {
-            this.appendPartialBlock(data.payload.text, data.occurredAt);
+            this.appendPartialBlock(data.payload.text, data.occurredAt, false, true);
             return;
         }
 
@@ -56,17 +72,27 @@ export default class extends Controller {
         this.contentTarget.querySelector('.muted')?.remove();
     }
 
-    appendPartialBlock(text, occurredAt, isFinal = false) {
+    appendPartialBlock(text, occurredAt, isFinal = false, isStreaming = false) {
         const trimmed = String(text).trim();
         if (!trimmed) {
             return;
         }
 
-        if (!isFinal) {
-            this.partialBlocks.push(trimmed);
+        if (isFinal) {
+            this.completedBlocks = [trimmed];
+            this.currentPreview = '';
+        } else if (isStreaming) {
+            this.currentPreview = trimmed;
+        } else {
+            this.completedBlocks.push(trimmed);
+            this.currentPreview = '';
         }
 
-        const cumulative = this.partialBlocks.join(' ');
+        const parts = [...this.completedBlocks];
+        if (this.currentPreview !== '') {
+            parts.push(this.currentPreview);
+        }
+        const cumulative = parts.join(' ');
 
         if (!this.liveLine) {
             this.liveLine = document.createElement('div');
@@ -76,13 +102,15 @@ export default class extends Controller {
         }
 
         const time = new Date(occurredAt).toLocaleTimeString();
+        const latest = this.currentPreview !== '' ? this.currentPreview : trimmed;
         this.liveLine.innerHTML = `
-            <p class="live-segment"><time>${time}</time> <span class="segment-latest">${this.escapeHtml(trimmed)}</span></p>
+            <p class="live-segment"><time>${time}</time> <span class="segment-latest">${this.escapeHtml(latest)}</span></p>
             <p class="live-cumulative muted">${this.escapeHtml(cumulative)}</p>
         `;
 
         if (isFinal) {
-            this.partialBlocks = [];
+            this.completedBlocks = [];
+            this.currentPreview = '';
             this.liveLine = null;
         }
     }

@@ -6,19 +6,28 @@
 <h1>Session <code>{{ session.id }}</code></h1>
 <p>
     <span class="badge badge-{{ session.status.value }}" id="session-status-badge">{{ session.status.value }}</span>
-    <span class="muted">PID {{ session.pid }} · {{ session.provider.value }}</span>
+    <span class="muted" id="session-meta">
+        PID {{ session.pid }}
+        · {{ session.provider.value }}
+        {% if whisperStreamMode %} · mic stream{% endif %}
+        {% if configuredProvider != session.provider.value %}
+            <span class="hint">(config: {{ configuredProvider }})</span>
+        {% endif %}
+    </span>
 </p>
 
 {% include 'session/_controls_frame.html.twig' with {sessionId: session.id} %}
 
-{% if whisperStreamMode %}
-<p class="hint">Stream mode: speak after START — text appears in segments (VAD). Click STOP to finalize.</p>
+{% if openAiRealtimeMode %}
+<p class="hint">OpenAI Realtime: text appears while you speak (VAD segments). STOP finalizes the session.</p>
+{% elseif whisperStreamMode %}
+<p class="hint">Whisper stream: text updates every ~{{ (whisperStreamStepMs / 1000)|round(1) }}s while you speak. STOP saves the final transcript.</p>
 {% endif %}
 
 <section
     class="live-transcript"
     data-controller="live-transcript"
-    data-live-transcript-url-value="{{ mercure(mercure_topic, { subscribe: mercure_topic }) }}"
+    data-live-transcript-url-value="{{ mercure(mercure_topic, { subscribe: [mercure_topic, '/voice/dashboard'] }) }}"
 >
     <h2>Live transcription</h2>
     <div id="live-transcript-content" data-live-transcript-target="content">

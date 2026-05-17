@@ -11,6 +11,14 @@ services:
         autowire: true
         autoconfigure: true
 
+    # darkwood/navi — domain + runner (+ demo command navi:workflow:run)
+    Navi\:
+        resource: '../vendor/darkwood/navi/src/'
+        exclude:
+            - '../vendor/darkwood/navi/src/Kernel.php'
+
+    Navi\Application\Workflow\WorkflowRunner: ~
+
     Symfony\Component\Messenger\Transport\TransportFactoryInterface: '@messenger.transport_factory'
     Symfony\Component\Messenger\Transport\Serialization\SerializerInterface: '@messenger.default_serializer'
 
@@ -48,6 +56,7 @@ services:
             $modelPath: '%env(default:whisper_model_path:string:WHISPER_MODEL_PATH)%'
             $language: '%env(default:whisper_stream_language_default:WHISPER_STREAM_LANGUAGE)%'
             $lengthMs: '%env(int:default:whisper_stream_length_ms_default:WHISPER_STREAM_LENGTH_MS)%'
+            $stepMs: '%env(int:default:whisper_stream_step_ms_default:WHISPER_STREAM_STEP_MS)%'
             $vadThreshold: '%env(float:default:whisper_stream_vad_default:WHISPER_STREAM_VAD_THRESHOLD)%'
             $threads: '%env(int:default:whisper_stream_threads_default:WHISPER_STREAM_THREADS)%'
             $captureId: '%env(int:default:whisper_stream_capture_default:WHISPER_STREAM_CAPTURE_ID)%'
@@ -67,11 +76,16 @@ services:
     App\Command\VoiceWorkerCommand:
         arguments:
             $whisperMode: '%flowvox.whisper.mode%'
+            $whisperLanguage: '%env(default:whisper_stream_language_default:WHISPER_STREAM_LANGUAGE)%'
 
     App\Infrastructure\Transcription\OpenAiBatchTranscriptionProvider:
+        arguments:
+            $model: '%env(default:openai_transcription_model_default:OPENAI_TRANSCRIPTION_MODEL)%'
         tags: ['app.transcription_provider']
 
     App\Infrastructure\Transcription\OpenAiRealtimeTranscriptionProvider:
+        arguments:
+            $transcriptionModel: '%env(default:openai_realtime_transcription_model_default:OPENAI_REALTIME_TRANSCRIPTION_MODEL)%'
         tags: ['app.transcription_provider']
 
     App\Infrastructure\Transcription\OpenAiRealtimeAgentProvider:

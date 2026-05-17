@@ -22,6 +22,15 @@ final class WhisperStreamRealtimeSession implements RealtimeSessionInterface
         // whisper-stream captures audio via SDL2; browser PCM is not used.
     }
 
+    public function poll(): void
+    {
+    }
+
+    public function getAccumulatedTranscript(): string
+    {
+        return '';
+    }
+
     public function close(): void
     {
         if ($this->runner->isRunning()) {

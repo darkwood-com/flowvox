@@ -12,6 +12,15 @@ final class UnsupportedRealtimeSession implements RealtimeSessionInterface
     {
     }
 
+    public function poll(): void
+    {
+    }
+
+    public function getAccumulatedTranscript(): string
+    {
+        return '';
+    }
+
     public function close(): void
     {
     }

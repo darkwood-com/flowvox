@@ -26,9 +26,10 @@ final class TranscribeFlow extends Flow
         TranscriptionProviderRegistry $providerRegistry,
         string $sessionId,
         LoggerInterface $logger,
+        string $defaultLanguage = 'fr',
         ?WorkerEventEmitter $eventEmitter = null,
     ) {
-        $ipStrategy = new WhisperTranscribeIpStrategy($providerRegistry, $sessionId, $logger, $eventEmitter);
+        $ipStrategy = new WhisperTranscribeIpStrategy($providerRegistry, $sessionId, $logger, $defaultLanguage, $eventEmitter);
 
         parent::__construct(
             function (RecordingFinished $data) use ($ipStrategy): TranscriptionChunk {

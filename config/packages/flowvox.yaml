@@ -3,8 +3,11 @@ parameters:
     flowvox.whisper.mode: '%env(string:FLOWVOX_WHISPER_MODE)%'
     openai_key_empty: ''
     whisper_stream_language_default: 'fr'
-    whisper_stream_length_ms_default: 30000
+    whisper_stream_length_ms_default: 5000
+    whisper_stream_step_ms_default: 500
     whisper_stream_vad_default: '0.6'
     whisper_stream_threads_default: 6
     whisper_stream_capture_default: -1
+    openai_transcription_model_default: 'gpt-4o-transcribe'
+    openai_realtime_transcription_model_default: 'gpt-4o-transcribe'
     whisper_ffmpeg_capture_default: 2

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Flow;
 
+use App\Application\Transcription\TranscriptionProviderRegistry;
+use App\Infrastructure\Transcription\OpenAiRealtimeTranscriptionProvider;
 use App\IpStrategy\VoiceRecorderIpStrategy;
 use App\Model\RecordingFinished;
 use App\Model\VoiceControlEvent;
@@ -28,7 +30,10 @@ final class RecorderFlow extends Flow
         LoggerInterface $logger,
         bool $useWhisperStream,
         WhisperStreamRunner $whisperStreamRunner,
+        TranscriptionProviderRegistry $providerRegistry,
+        OpenAiRealtimeTranscriptionProvider $openAiRealtimeProvider,
         string $sessionId,
+        string $defaultLanguage,
         ?WorkerEventEmitter $eventEmitter = null,
     ) {
         $ipStrategy = new VoiceRecorderIpStrategy(
@@ -36,7 +41,10 @@ final class RecorderFlow extends Flow
             $logger,
             $useWhisperStream,
             $whisperStreamRunner,
+            $providerRegistry,
+            $openAiRealtimeProvider,
             $sessionId,
+            $defaultLanguage,
             $eventEmitter,
         );
 

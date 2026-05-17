@@ -27,12 +27,15 @@ final class WhisperStreamRunner
 
     private int $transcriptFileOffset = 0;
 
+    private ?\DateTimeImmutable $startedAt = null;
+
     public function __construct(
         private readonly string $projectDir,
         private readonly string $streamBinaryPath,
         private readonly string $modelPath,
         private readonly string $language,
         private readonly int $lengthMs,
+        private readonly int $stepMs,
         private readonly float $vadThreshold,
         private readonly int $threads,
         private readonly int $captureId = -1,
@@ -63,6 +66,7 @@ final class WhisperStreamRunner
         }
 
         $this->sessionId = $sessionId;
+        $this->startedAt = new \DateTimeImmutable();
         $this->transcriptFileOffset = 0;
         $this->parser->reset();
         $this->workDir = $this->projectDir . '/var/voice';
@@ -75,25 +79,11 @@ final class WhisperStreamRunner
             @unlink($this->transcriptPath);
         }
 
-        $command = [
-            $this->streamBinaryPath,
-            '-m', $this->modelPath,
-            '-l', $this->language,
-            '-t', (string) $this->threads,
-            '--step', '0',
-            '--length', (string) $this->lengthMs,
-            '-vth', (string) $this->vadThreshold,
-            '-f', $this->transcriptPath,
-            '-sa',
-        ];
-
-        if ($this->captureId >= 0) {
-            $command[] = '-c';
-            $command[] = (string) $this->captureId;
-        }
+        $command = $this->buildCommand();
 
         $this->process = new Process($command, $this->workDir, null, null, null);
         $this->process->setTimeout(null);
+        $this->process->setPty(true);
         $this->process->start();
 
         if (!$this->process->isRunning()) {
@@ -139,22 +129,83 @@ final class WhisperStreamRunner
         }
 
         $remaining = $this->process->getOutput() . $this->process->getErrorOutput();
-        $this->parser->feed($remaining);
+        $finalPartials = $this->parser->feed($remaining);
 
         if (is_file($this->transcriptPath)) {
-            $this->parser->feed((string) file_get_contents($this->transcriptPath));
+            $finalPartials = array_merge($finalPartials, $this->parser->feed((string) file_get_contents($this->transcriptPath)));
         }
 
         $this->process = null;
         $fullText = $this->parser->getAccumulatedText();
         $wavPath = $this->findLatestWavPath();
 
-        return new WhisperStreamStopResult($fullText, $wavPath, $this->transcriptPath);
+        return new WhisperStreamStopResult($fullText, $wavPath, $this->transcriptPath, $finalPartials);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildCommand(): array
+    {
+        $args = [
+            $this->streamBinaryPath,
+            '-m', $this->modelPath,
+            '-l', $this->language,
+            '-t', (string) $this->threads,
+            // step > 0 = sliding window (live updates); step 0 = VAD (text after silence only)
+            '--step', (string) $this->stepMs,
+            '--length', (string) $this->lengthMs,
+            '-vth', (string) $this->vadThreshold,
+            '-f', $this->transcriptPath,
+            '-sa',
+        ];
+
+        if ($this->captureId >= 0) {
+            $args[] = '-c';
+            $args[] = (string) $this->captureId;
+        }
+
+        $stdbuf = $this->resolveStdbufPath();
+        if ($stdbuf !== null) {
+            return array_merge([$stdbuf, '-oL', '-eL'], $args);
+        }
+
+        return $args;
+    }
+
+    private function resolveStdbufPath(): ?string
+    {
+        foreach (['/usr/bin/stdbuf', '/opt/homebrew/opt/coreutils/libexec/gnubin/stdbuf'] as $path) {
+            if (is_executable($path)) {
+                return $path;
+            }
+        }
+
+        $process = new Process(['command', '-v', 'stdbuf']);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            $path = trim($process->getOutput());
+            if ($path !== '' && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     private function findLatestWavPath(): string
     {
         $files = glob($this->workDir . '/*.wav') ?: [];
+        if ($files === []) {
+            return '';
+        }
+
+        $cutoff = ($this->startedAt ?? new \DateTimeImmutable())->getTimestamp() - 5;
+        $files = array_values(array_filter(
+            $files,
+            static fn (string $path): bool => is_file($path) && filemtime($path) >= $cutoff,
+        ));
         if ($files === []) {
             return '';
         }

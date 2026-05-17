@@ -1,3 +1,4 @@
+{% if event.type.value != 'heartbeat' %}
 <turbo-stream action="append" target="live-transcript-content">
     <template>
         <p class="event event-{{ event.type.value }}">
@@ -13,6 +14,7 @@
         </p>
     </template>
 </turbo-stream>
+{% endif %}
 {% if event.type.value in ['recording_started', 'recording_stopped', 'transcription_final', 'error'] %}
 <turbo-stream action="replace" target="session-status-badge">
     <template>

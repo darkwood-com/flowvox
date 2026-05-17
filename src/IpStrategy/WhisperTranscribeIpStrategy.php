@@ -6,6 +6,7 @@ namespace App\IpStrategy;
 
 use App\Application\Transcription\TranscriptionContext;
 use App\Application\Transcription\TranscriptionProviderRegistry;
+use App\Domain\Enum\TranscriptionProviderType;
 use App\Domain\Enum\VoiceDomainEventType;
 use App\Model\RecordingFinished;
 use App\Model\TranscriptionChunk;
@@ -35,6 +36,7 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
         private readonly TranscriptionProviderRegistry $providerRegistry,
         private readonly string $sessionId,
         private readonly LoggerInterface $logger,
+        private readonly string $defaultLanguage = 'fr',
         private readonly ?WorkerEventEmitter $eventEmitter = null,
     ) {
     }
@@ -80,31 +82,55 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
             }
 
             $wavPath = $data->wavPath;
-            $liveTranscript = $data->liveTranscript;
-            $this->logger->info('Transcribe started wav={path} live={live}', [
+            $liveTranscript = trim($data->liveTranscript ?? '');
+            $providerType = $this->providerRegistry->getDefaultType();
+            $this->logger->info('Transcribe started wav={path} provider={provider} live={live}', [
                 'path' => $wavPath,
-                'live' => $liveTranscript !== null && $liveTranscript !== '',
+                'provider' => $providerType->value,
+                'live' => $liveTranscript !== '',
             ]);
 
-            if ($liveTranscript !== null && trim($liveTranscript) !== '') {
-                $text = trim($liveTranscript);
+            $useLiveOnly = $liveTranscript !== ''
+                && \in_array($providerType, [
+                    TranscriptionProviderType::WhisperCppStream,
+                    TranscriptionProviderType::OpenAiRealtimeWhisper,
+                ], true);
+
+            if ($useLiveOnly) {
+                $text = $liveTranscript;
                 $language = null;
             } else {
                 $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => '', 'status' => 'transcribing']);
 
                 try {
-                    $providerType = $this->providerRegistry->getDefaultType();
-                    $provider = $this->providerRegistry->get($providerType);
-                    $result = $provider->transcribeFile($wavPath, new TranscriptionContext($this->sessionId, $providerType));
+                    if ($this->isTranscribableWav($wavPath)) {
+                        $provider = $this->providerRegistry->get($providerType);
+                        $result = $provider->transcribeFile($wavPath, new TranscriptionContext(
+                            $this->sessionId,
+                            $providerType,
+                            $this->defaultLanguage,
+                        ));
+                        $text = $result->text;
+                        $language = $result->language;
+                    } elseif ($liveTranscript !== '') {
+                        $text = $liveTranscript;
+                        $language = null;
+                        $this->logger->warning('No usable WAV for {provider}, using live stream transcript', [
+                            'provider' => $providerType->value,
+                        ]);
+                    } else {
+                        throw new \RuntimeException(sprintf(
+                            'No WAV file for %s transcription (path: %s).',
+                            $providerType->value,
+                            $wavPath !== '' ? $wavPath : '(empty)',
+                        ));
+                    }
                 } catch (\Throwable $e) {
                     $this->eventEmitter?->emit(VoiceDomainEventType::Error, ['message' => $e->getMessage()]);
                     $this->pending = null;
 
                     return;
                 }
-
-                $text = $result->text;
-                $language = $result->language;
             }
 
             $at = new \DateTimeImmutable();
@@ -140,5 +166,20 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
         $this->outputChunk = null;
 
         return $chunk;
+    }
+
+    private function isTranscribableWav(string $wavPath): bool
+    {
+        if ($wavPath === '' || str_contains($wavPath, '://')) {
+            return false;
+        }
+
+        if (!is_file($wavPath) || !is_readable($wavPath)) {
+            return false;
+        }
+
+        $size = filesize($wavPath);
+
+        return $size !== false && $size >= 1000;
     }
 }
