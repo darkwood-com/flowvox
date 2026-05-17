@@ -9,6 +9,7 @@ use App\Enum\VoiceControlType;
 use App\Model\RecordingFinished;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
+use App\Service\WhisperStreamRunner;
 use App\Service\WorkerEventEmitter;
 use Flow\Event;
 use Flow\Event\PoolEvent;
@@ -41,6 +42,9 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
     public function __construct(
         private readonly VoiceRecorder $voiceRecorder,
         private readonly LoggerInterface $logger,
+        private readonly bool $useWhisperStream,
+        private readonly WhisperStreamRunner $whisperStreamRunner,
+        private readonly string $sessionId,
         private readonly ?WorkerEventEmitter $eventEmitter = null,
     ) {
     }
@@ -60,10 +64,15 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
         $data = $ip->data;
         if ($data->type === VoiceControlType::START) {
             if ($this->state === self::STATE_IDLE) {
-                $path = $this->voiceRecorder->start();
+                if ($this->useWhisperStream) {
+                    $this->whisperStreamRunner->start($this->sessionId);
+                    $path = 'stream://' . $this->sessionId;
+                } else {
+                    $path = $this->voiceRecorder->start();
+                }
                 $this->state = self::STATE_RECORDING;
                 $this->activeStartIp = $ip;
-                $this->logger->info('PUSH START -> start recording path={path}', ['path' => $path]);
+                $this->logger->info('PUSH START -> start recording path={path}', ['path' => $path, 'stream' => $this->useWhisperStream]);
                 $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStarted, ['wavPath' => $path]);
             } elseif ($this->state === self::STATE_RECORDING) {
                 $this->logger->debug('PUSH START ignored (already recording)');
@@ -76,9 +85,14 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
 
         if ($data->type === VoiceControlType::STOP) {
             if ($this->state === self::STATE_RECORDING) {
-                $this->voiceRecorder->requestStop();
-                $this->state = self::STATE_STOPPING;
-                $this->logger->info('PUSH STOP -> request stop');
+                if ($this->useWhisperStream) {
+                    $this->state = self::STATE_STOPPING;
+                    $this->logger->info('PUSH STOP -> stopping whisper-stream');
+                } else {
+                    $this->voiceRecorder->requestStop();
+                    $this->state = self::STATE_STOPPING;
+                    $this->logger->info('PUSH STOP -> request stop');
+                }
             } elseif ($this->state === self::STATE_IDLE || $this->state === self::STATE_STOPPING) {
                 $this->logger->debug('PUSH STOP ignored (state={state})', ['state' => $this->state]);
             }
@@ -94,10 +108,6 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
         $event->addIp($ip);
     }
 
-    /**
-     * Returns the RecordingFinished produced for the given START VoiceControlEvent (keyed by instance id).
-     * Removes it from the map after retrieval.
-     */
     public function getRecordingFinishedForStartEvent(VoiceControlEvent $event): RecordingFinished
     {
         $id = spl_object_id($event);
@@ -112,23 +122,28 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
 
     public function pool(PoolEvent $event): void
     {
-        if ($this->state === self::STATE_STOPPING) {
-            $wavPath = $this->voiceRecorder->pollStop();
-            if ($wavPath !== null) {
-                $recording = new RecordingFinished($wavPath, new \DateTimeImmutable());
-                $this->logger->info('Recorder finished wav={path} -> emitted RecordingFinished', ['path' => $wavPath]);
-                $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStopped, ['wavPath' => $wavPath]);
-                $this->state = self::STATE_IDLE;
-                $this->outputByStartEventId[spl_object_id($this->activeStartIp->data)] = $recording;
-                $this->outputQueueStartIps[] = $this->activeStartIp;
-                $this->activeStartIp = null;
+        if ($this->state === self::STATE_RECORDING && $this->useWhisperStream) {
+            $poll = $this->whisperStreamRunner->poll();
+            foreach ($poll->newPartials as $partial) {
+                $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => $partial]);
+            }
+        }
 
-                if ($this->queuedStartIp !== null) {
-                    $this->voiceRecorder->start();
-                    $this->state = self::STATE_RECORDING;
-                    $this->activeStartIp = $this->queuedStartIp;
-                    $this->queuedStartIp = null;
-                    $this->logger->info('queued START detected -> restart recording');
+        if ($this->state === self::STATE_STOPPING) {
+            if ($this->useWhisperStream) {
+                $stopResult = $this->whisperStreamRunner->stop();
+                $wavPath = $stopResult->wavPath !== '' ? $stopResult->wavPath : ('stream://' . $this->sessionId);
+                $recording = new RecordingFinished($wavPath, new \DateTimeImmutable(), $stopResult->fullText);
+                $this->logger->info('whisper-stream stopped wav={path}', ['path' => $wavPath]);
+                $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStopped, ['wavPath' => $wavPath]);
+                $this->finalizeRecording($recording);
+            } else {
+                $wavPath = $this->voiceRecorder->pollStop();
+                if ($wavPath !== null) {
+                    $recording = new RecordingFinished($wavPath, new \DateTimeImmutable());
+                    $this->logger->info('Recorder finished wav={path} -> emitted RecordingFinished', ['path' => $wavPath]);
+                    $this->eventEmitter?->emit(VoiceDomainEventType::RecordingStopped, ['wavPath' => $wavPath]);
+                    $this->finalizeRecording($recording);
                 }
             }
         }
@@ -137,5 +152,25 @@ final class VoiceRecorderIpStrategy implements IpStrategyInterface
             $event->addIps([$this->activeStartIp]);
         }
         $event->addIps($this->outputQueueStartIps);
+    }
+
+    private function finalizeRecording(RecordingFinished $recording): void
+    {
+        $this->state = self::STATE_IDLE;
+        $this->outputByStartEventId[spl_object_id($this->activeStartIp->data)] = $recording;
+        $this->outputQueueStartIps[] = $this->activeStartIp;
+        $this->activeStartIp = null;
+
+        if ($this->queuedStartIp !== null) {
+            if ($this->useWhisperStream) {
+                $this->whisperStreamRunner->start($this->sessionId);
+            } else {
+                $this->voiceRecorder->start();
+            }
+            $this->state = self::STATE_RECORDING;
+            $this->activeStartIp = $this->queuedStartIp;
+            $this->queuedStartIp = null;
+            $this->logger->info('queued START detected -> restart recording');
+        }
     }
 }

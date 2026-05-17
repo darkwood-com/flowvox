@@ -16,6 +16,14 @@
 </section>
 
 <section>
+    <h2>Whisper stream (local realtime)</h2>
+    <p>Mode: <code>{{ whisperMode }}</code> (<code>FLOWVOX_WHISPER_MODE</code>: <code>batch</code> or <code>stream</code>)</p>
+    <p>Binary: <code>{{ whisperStreamPath ?: '(not set)' }}</code> — set <code>WHISPER_STREAM_PATH</code> to <code>whisper-stream</code> built with <code>WHISPER_SDL2=ON</code>.</p>
+    <p>Provider <code>whisper_cpp_stream</code> is available when using stream mode. Requires SDL2 (<code>brew install sdl2</code> on macOS).</p>
+    <p>Only one app can use the microphone at a time — do not run ffmpeg recording and whisper-stream together.</p>
+</section>
+
+<section>
     <h2>OpenAI</h2>
     <p>{% if openaiConfigured %}API key configured.{% else %}Set <code>OPENAI_API_KEY</code> for cloud modes.{% endif %}</p>
 </section>

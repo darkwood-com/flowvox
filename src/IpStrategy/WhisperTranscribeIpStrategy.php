@@ -80,35 +80,49 @@ final class WhisperTranscribeIpStrategy implements IpStrategyInterface
             }
 
             $wavPath = $data->wavPath;
-            $this->logger->info('Transcribe started wav={path}', ['path' => $wavPath]);
-            $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => '', 'status' => 'transcribing']);
+            $liveTranscript = $data->liveTranscript;
+            $this->logger->info('Transcribe started wav={path} live={live}', [
+                'path' => $wavPath,
+                'live' => $liveTranscript !== null && $liveTranscript !== '',
+            ]);
 
-            try {
-                $providerType = $this->providerRegistry->getDefaultType();
-                $provider = $this->providerRegistry->get($providerType);
-                $result = $provider->transcribeFile($wavPath, new TranscriptionContext($this->sessionId, $providerType));
-            } catch (\Throwable $e) {
-                $this->eventEmitter?->emit(VoiceDomainEventType::Error, ['message' => $e->getMessage()]);
-                $this->pending = null;
-                return;
+            if ($liveTranscript !== null && trim($liveTranscript) !== '') {
+                $text = trim($liveTranscript);
+                $language = null;
+            } else {
+                $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionPartial, ['text' => '', 'status' => 'transcribing']);
+
+                try {
+                    $providerType = $this->providerRegistry->getDefaultType();
+                    $provider = $this->providerRegistry->get($providerType);
+                    $result = $provider->transcribeFile($wavPath, new TranscriptionContext($this->sessionId, $providerType));
+                } catch (\Throwable $e) {
+                    $this->eventEmitter?->emit(VoiceDomainEventType::Error, ['message' => $e->getMessage()]);
+                    $this->pending = null;
+
+                    return;
+                }
+
+                $text = $result->text;
+                $language = $result->language;
             }
 
             $at = new \DateTimeImmutable();
-            $chunk = new TranscriptionChunk($result->text, $at, $wavPath);
+            $chunk = new TranscriptionChunk($text, $at, $wavPath);
 
             $this->outputChunk = $chunk;
             $this->outputInputIp = $this->pending;
             $this->pending = null;
 
             $this->eventEmitter?->emit(VoiceDomainEventType::TranscriptionFinal, [
-                'text' => $result->text,
+                'text' => $text,
                 'wavPath' => $wavPath,
-                'language' => $result->language,
+                'language' => $language,
             ]);
 
-            $preview = mb_strlen($result->text) > self::PREVIEW_LEN
-                ? mb_substr($result->text, 0, self::PREVIEW_LEN) . '…'
-                : $result->text;
+            $preview = mb_strlen($text) > self::PREVIEW_LEN
+                ? mb_substr($text, 0, self::PREVIEW_LEN) . '…'
+                : $text;
             $this->logger->info('Transcribe done: {preview}', ['preview' => $preview]);
         }
 

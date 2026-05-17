@@ -3,6 +3,8 @@
 parameters:
     whisper_cli_path: ''
     whisper_model_path: ''
+    whisper_stream_path: ''
+    flowvox.whisper.mode: 'batch'
 
 services:
     _defaults:
@@ -32,6 +34,17 @@ services:
             $whisperCliPath: '%env(default:whisper_cli_path:string:WHISPER_CLI_PATH)%'
             $modelPath: '%env(default:whisper_model_path:string:WHISPER_MODEL_PATH)%'
 
+    App\Service\WhisperStreamRunner:
+        shared: false
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $streamBinaryPath: '%env(default:whisper_stream_path:string:WHISPER_STREAM_PATH)%'
+            $modelPath: '%env(default:whisper_model_path:string:WHISPER_MODEL_PATH)%'
+            $language: '%env(default:whisper_stream_language_default:WHISPER_STREAM_LANGUAGE)%'
+            $lengthMs: '%env(int:default:whisper_stream_length_ms_default:WHISPER_STREAM_LENGTH_MS)%'
+            $vadThreshold: '%env(float:default:whisper_stream_vad_default:WHISPER_STREAM_VAD_THRESHOLD)%'
+            $threads: '%env(int:default:whisper_stream_threads_default:WHISPER_STREAM_THREADS)%'
+
     App\Service\WorkerEventEmitter:
         shared: false
 
@@ -40,6 +53,13 @@ services:
 
     App\Infrastructure\Transcription\WhisperCppTranscriptionProvider:
         tags: ['app.transcription_provider']
+
+    App\Infrastructure\Transcription\WhisperCppStreamTranscriptionProvider:
+        tags: ['app.transcription_provider']
+
+    App\Command\VoiceWorkerCommand:
+        arguments:
+            $whisperMode: '%flowvox.whisper.mode%'
 
     App\Infrastructure\Transcription\OpenAiBatchTranscriptionProvider:
         tags: ['app.transcription_provider']

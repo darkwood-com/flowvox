@@ -23,6 +23,7 @@ final class SessionController extends AbstractController
             'session' => $detail['session'],
             'transcriptions' => $detail['transcriptions'],
             'mercure_topic' => '/voice/sessions/' . $sessionId,
+            'whisperStreamMode' => ($_ENV['FLOWVOX_WHISPER_MODE'] ?? 'batch') === 'stream',
         ]);
     }
 }

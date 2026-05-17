@@ -24,6 +24,32 @@ WHISPER_CLI_PATH=/path/to/whisper-cli
 WHISPER_MODEL_PATH=/path/to/ggml-base.bin
 ```
 
+### Local realtime (whisper-stream)
+
+Build `whisper-stream` with SDL2 (microphone capture is done by whisper-stream, not ffmpeg):
+
+```bash
+brew install sdl2
+cmake -B build -DWHISPER_SDL2=ON && cmake --build build --config Release
+# binary: build/bin/whisper-stream
+```
+
+Enable stream mode:
+
+```
+FLOWVOX_WHISPER_MODE=stream
+WHISPER_STREAM_PATH=/path/to/build/bin/whisper-stream
+WHISPER_STREAM_LANGUAGE=fr
+```
+
+Test microphone + parser without the worker:
+
+```bash
+php bin/console voice:stream-test --seconds=15
+```
+
+Only one process should use the microphone on macOS (do not run ffmpeg `voice:record-test` and stream mode at the same time). Recommended models: `base` or `small` for lower latency.
+
 ## Web UI
 
 Start Mercure (Docker):
@@ -59,7 +85,8 @@ OPENAI_API_KEY=sk-...
 
 | Value | Description |
 |-------|-------------|
-| `whisper_cpp` | Local whisper.cpp (default, private) |
+| `whisper_cpp` | Local whisper.cpp batch after STOP (default, private) |
+| `whisper_cpp_stream` | Local whisper-stream (use with `FLOWVOX_WHISPER_MODE=stream`) |
 | `openai_batch` | OpenAI Whisper via Symfony AI |
 | `openai_realtime_whisper` | OpenAI Realtime API (streaming partials) |
 
@@ -98,6 +125,7 @@ php bin/console voice:worker-list --clean-stale
 
 ```bash
 php bin/console voice:record-test
+php bin/console voice:stream-test --seconds=15
 php bin/console voice:transcribe-test /path/to/file.wav
 php bin/console voice:watch-folder --dir=var/watch
 ```
@@ -114,6 +142,6 @@ php bin/console ux:native:generate-config
 
 ## Architecture
 
-- **Workers** (`voice:worker`) — Flow pipeline: Messenger control → record (ffmpeg) → transcribe
+- **Workers** (`voice:worker`) — Flow pipeline: Messenger control → record (ffmpeg batch or whisper-stream) → transcribe
 - **UI** — Twig + UX Turbo + Mercure (observe + control only)
 - **Application layer** — `SendVoiceControl`, `RecordWorkerEvent`, transcription providers

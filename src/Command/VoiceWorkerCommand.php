@@ -14,6 +14,8 @@ use App\Model\TranscriptionChunk;
 use App\Model\VoiceControlEvent;
 use App\Service\VoiceRecorder;
 use App\Service\VoiceTransportProvider;
+use App\Service\WhisperMode;
+use App\Service\WhisperStreamRunner;
 use App\Service\VoiceWorkerRegistry;
 use App\Service\WorkerEventEmitter;
 use Flow\Driver\FiberDriver;
@@ -40,9 +42,11 @@ final class VoiceWorkerCommand extends Command
         private readonly VoiceTransportProvider $transportProvider,
         private readonly VoiceWorkerRegistry $registry,
         private readonly VoiceRecorder $voiceRecorder,
+        private readonly WhisperStreamRunner $whisperStreamRunner,
         private readonly TranscriptionProviderRegistry $providerRegistry,
         private readonly WorkerEventEmitter $eventEmitter,
         private readonly LoggerInterface $logger,
+        private readonly string $whisperMode,
     ) {
         parent::__construct();
     }
@@ -89,7 +93,19 @@ final class VoiceWorkerCommand extends Command
 
             return $data;
         };
-        $recorderFlow = new RecorderFlow($driver, $this->voiceRecorder, $this->logger, $this->eventEmitter);
+        $useWhisperStream = WhisperMode::fromEnv($this->whisperMode) === WhisperMode::Stream;
+        if ($useWhisperStream) {
+            $io->note('Whisper stream mode: microphone captured by whisper-stream (SDL2).');
+        }
+        $recorderFlow = new RecorderFlow(
+            $driver,
+            $this->voiceRecorder,
+            $this->logger,
+            $useWhisperStream,
+            $this->whisperStreamRunner,
+            $sessionId,
+            $this->eventEmitter,
+        );
         $transcribeFlow = new TranscribeFlow($driver, $this->providerRegistry, $sessionId, $this->logger, $this->eventEmitter);
 
         $flow = (new FlowFactory())

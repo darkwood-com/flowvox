@@ -12,6 +12,7 @@ final readonly class RecordingFinished
     public function __construct(
         public string $wavPath,
         public \DateTimeImmutable $at,
+        public ?string $liveTranscript = null,
     ) {
     }
 }

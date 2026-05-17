@@ -13,6 +13,10 @@
     {% include 'session/_controls.html.twig' with {sessionId: session.id} %}
 </turbo-frame>
 
+{% if whisperStreamMode %}
+<p class="hint">Stream mode: speak after START — text appears in segments (VAD). Click STOP to finalize.</p>
+{% endif %}
+
 <section
     class="live-transcript"
     data-controller="live-transcript"
