@@ -6,6 +6,7 @@ namespace App\Application\UseCase;
 
 use App\Application\Port\VoiceEventPublisherPort;
 use App\Domain\Event\VoiceDomainEvent;
+use App\Infrastructure\Navi\VoiceEventTraceLogger;
 use App\Infrastructure\Persistence\DoctrineVoiceEventStore;
 use Psr\Log\LoggerInterface;
 
@@ -14,6 +15,7 @@ final readonly class RecordWorkerEvent
     public function __construct(
         private DoctrineVoiceEventStore $eventStore,
         private VoiceEventPublisherPort $publisher,
+        private VoiceEventTraceLogger $traceLogger,
         private LoggerInterface $logger,
     ) {
     }
@@ -22,6 +24,7 @@ final readonly class RecordWorkerEvent
     {
         // Mercure first so the UI gets live updates even if persistence fails.
         $this->publisher->publish($event);
+        $this->traceLogger->trace($event);
 
         try {
             $this->eventStore->record($event);

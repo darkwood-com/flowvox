@@ -98,3 +98,17 @@ services:
         arguments:
             $providers: !tagged_iterator app.transcription_provider
             $defaultProvider: '%flowvox.transcription.default_provider%'
+
+    App\Infrastructure\Navi\LogVoiceEventAction:
+        arguments:
+            $logFile: '%flowvox.navi.trace.log_file%'
+
+    App\Infrastructure\Navi\VoiceEventTraceLogger:
+        arguments:
+            $enabled: '%flowvox.navi.trace.enabled%'
+            $skipHeartbeat: true
+
+    App\Command\VoiceTraceTestCommand:
+        arguments:
+            $traceLogFile: '%flowvox.navi.trace.log_file%'
+            $traceEnabled: '%flowvox.navi.trace.enabled%'

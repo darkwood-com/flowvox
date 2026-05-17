@@ -1,6 +1,9 @@
 parameters:
     flowvox.transcription.default_provider: '%env(string:FLOWVOX_TRANSCRIPTION_PROVIDER)%'
     flowvox.whisper.mode: '%env(string:FLOWVOX_WHISPER_MODE)%'
+    flowvox.navi.trace.enabled: '%env(bool:default:flowvox_navi_trace_default:FLOWVOX_NAVI_TRACE)%'
+    flowvox.navi.trace.log_file: '%kernel.project_dir%/var/log/voice_events.ndjson'
+    flowvox_navi_trace_default: false
     openai_key_empty: ''
     whisper_stream_language_default: 'fr'
     whisper_stream_length_ms_default: 5000
