@@ -15,7 +15,17 @@ composer install
 php bin/console doctrine:migrations:migrate --no-interaction
 ```
 
-Database: SQLite by default (`var/data.db`). Set `DATABASE_URL` in `.env` to use another driver.
+Database: SQLite by default (`var/data.db`). If you run `docker compose up` with the Postgres service, the Symfony CLI may auto-set `DATABASE_URL` to Postgres — run migrations on that database:
+
+```bash
+php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+To stay on SQLite instead, add to `.env.local`:
+
+```env
+DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
+```
 
 Configure whisper.cpp in `.env.local`:
 
@@ -71,7 +81,10 @@ Start Mercure (Docker):
 
 ```bash
 docker compose up -d mercure
+php bin/console voice:mercure-test --session=demo
 ```
+
+Mercure must answer in **HTTP** on port 3000 (`MERCURE_URL=http://localhost:3000/.well-known/mercure`). If the worker logs `Mercure publish failed` with HTTP 308, recreate the hub after pulling (`docker compose up -d mercure --force-recreate`) — the dev HTTPS Caddy profile redirects to `https://localhost` and breaks publishing.
 
 Start the Symfony web server:
 
