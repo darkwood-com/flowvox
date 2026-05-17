@@ -50,6 +50,21 @@ php bin/console voice:stream-test --seconds=15
 
 Only one process should use the microphone on macOS (do not run ffmpeg `voice:record-test` and stream mode at the same time). Recommended models: `base` or `small` for lower latency.
 
+Select the microphone (device indices are **not** the same for stream vs batch):
+
+```bash
+php bin/console voice:list-capture-devices
+```
+
+```env
+# whisper-stream (SDL2), -1 = system default
+WHISPER_STREAM_CAPTURE_ID=0
+# ffmpeg avfoundation for batch mode
+WHISPER_FFMPEG_CAPTURE_DEVICE=0
+```
+
+`whisper-cli` only transcribes WAV files; it does not capture audio.
+
 ## Web UI
 
 Start Mercure (Docker):
@@ -124,6 +139,7 @@ php bin/console voice:worker-list --clean-stale
 ## Other commands
 
 ```bash
+php bin/console voice:list-capture-devices
 php bin/console voice:record-test
 php bin/console voice:stream-test --seconds=15
 php bin/console voice:transcribe-test /path/to/file.wav

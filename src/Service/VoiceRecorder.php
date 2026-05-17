@@ -19,7 +19,7 @@ use Symfony\Component\Process\Process;
  */
 final class VoiceRecorder
 {
-    private const AVFOUNDATION_INPUT = ':2';
+    private const DEFAULT_AVFOUNDATION_AUDIO_DEVICE = 2;
     private const SAMPLE_RATE = 16000;
     private const CHANNELS = 1;
     private const GRACEFUL_WAIT_SECONDS = 3;
@@ -39,6 +39,7 @@ final class VoiceRecorder
     public function __construct(
         private readonly string $projectDir,
         private readonly ?string $ffmpegPath = null,
+        private readonly int $avfoundationAudioDevice = self::DEFAULT_AVFOUNDATION_AUDIO_DEVICE,
     ) {
     }
 
@@ -231,11 +232,16 @@ final class VoiceRecorder
             '-loglevel', 'error',
             '-y',
             '-f', 'avfoundation',
-            '-i', self::AVFOUNDATION_INPUT,
+            '-i', $this->buildAvfoundationInput(),
             '-ac', (string) self::CHANNELS,
             '-ar', (string) self::SAMPLE_RATE,
             '-c:a', 'pcm_s16le',
             $outputPath,
         ];
+    }
+
+    private function buildAvfoundationInput(): string
+    {
+        return ':' . $this->avfoundationAudioDevice;
     }
 }

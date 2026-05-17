@@ -28,6 +28,8 @@ final class SettingsController extends AbstractController
             'openaiConfigured' => ($_ENV['OPENAI_API_KEY'] ?? '') !== '',
             'whisperMode' => $_ENV['FLOWVOX_WHISPER_MODE'] ?? 'batch',
             'whisperStreamPath' => $_ENV['WHISPER_STREAM_PATH'] ?? '',
+            'whisperStreamCaptureId' => $_ENV['WHISPER_STREAM_CAPTURE_ID'] ?? '-1',
+            'whisperFfmpegCaptureDevice' => $_ENV['WHISPER_FFMPEG_CAPTURE_DEVICE'] ?? '2',
         ]);
     }
 }

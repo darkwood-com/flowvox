@@ -35,6 +35,7 @@ final class WhisperStreamRunner
         private readonly int $lengthMs,
         private readonly float $vadThreshold,
         private readonly int $threads,
+        private readonly int $captureId = -1,
     ) {
         $this->parser = new WhisperStreamOutputParser();
     }
@@ -85,6 +86,11 @@ final class WhisperStreamRunner
             '-f', $this->transcriptPath,
             '-sa',
         ];
+
+        if ($this->captureId >= 0) {
+            $command[] = '-c';
+            $command[] = (string) $this->captureId;
+        }
 
         $this->process = new Process($command, $this->workDir, null, null, null);
         $this->process->setTimeout(null);

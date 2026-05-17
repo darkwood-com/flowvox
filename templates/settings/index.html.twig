@@ -21,6 +21,12 @@
     <p>Binary: <code>{{ whisperStreamPath ?: '(not set)' }}</code> — set <code>WHISPER_STREAM_PATH</code> to <code>whisper-stream</code> built with <code>WHISPER_SDL2=ON</code>.</p>
     <p>Provider <code>whisper_cpp_stream</code> is available when using stream mode. Requires SDL2 (<code>brew install sdl2</code> on macOS).</p>
     <p>Only one app can use the microphone at a time — do not run ffmpeg recording and whisper-stream together.</p>
+    <p>Microphone selection (IDs differ between modes):</p>
+    <ul>
+        <li>Stream: <code>WHISPER_STREAM_CAPTURE_ID={{ whisperStreamCaptureId }}</code> (<code>-1</code> = macOS/SDL default)</li>
+        <li>Batch: <code>WHISPER_FFMPEG_CAPTURE_DEVICE={{ whisperFfmpegCaptureDevice }}</code> (ffmpeg <code>:N</code>)</li>
+    </ul>
+    <p>Run <code>php bin/console voice:list-capture-devices</code> to list available devices.</p>
 </section>
 
 <section>

@@ -6,3 +6,5 @@ parameters:
     whisper_stream_length_ms_default: 30000
     whisper_stream_vad_default: '0.6'
     whisper_stream_threads_default: 6
+    whisper_stream_capture_default: -1
+    whisper_ffmpeg_capture_default: 2
