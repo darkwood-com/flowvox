@@ -37,8 +37,9 @@ use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 )]
 final class VoiceWorkerCommand extends Command
 {
-    private const HEARTBEAT_INTERVAL_SECONDS = 1000000; // 1 second
-    private const INPUT_PROVIDER_INTERVALE_SECONDS = 1; // 1 second
+    /** Flow FiberDriver tick interval = loop iterations, not seconds — use throttle in callback. */
+    private const HEARTBEAT_TICK_INTERVAL = 1;
+    private const INPUT_PROVIDER_TICK_INTERVAL = 1;
 
     public function __construct(
         private readonly VoiceTransportProvider $transportProvider,
@@ -149,8 +150,15 @@ final class VoiceWorkerCommand extends Command
                 'driver' => $driver,
             ]);
 
-        $cleanupInputProvider = $inputProviderFlow->tick(self::INPUT_PROVIDER_INTERVALE_SECONDS);
-        $cleanupHeartbeat = $driver->tick(self::HEARTBEAT_INTERVAL_SECONDS, function () use ($sessionId): void {
+        $cleanupInputProvider = $inputProviderFlow->tick(self::INPUT_PROVIDER_TICK_INTERVAL);
+        $cleanupHeartbeat = $driver->tick(self::HEARTBEAT_TICK_INTERVAL, function () use ($sessionId): void {
+            static $lastHeartbeatAt = 0.0;
+            $now = microtime(true);
+            if ($now - $lastHeartbeatAt < 1.0) {
+                return;
+            }
+            $lastHeartbeatAt = $now;
+
             $this->registry->heartbeat($sessionId);
             $this->eventEmitter->emit(VoiceDomainEventType::Heartbeat);
         });

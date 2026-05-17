@@ -67,6 +67,10 @@ services:
     App\Application\Port\VoiceControlPort: '@App\Infrastructure\Messenger\MessengerVoiceControlAdapter'
     App\Application\Port\VoiceEventPublisherPort: '@App\Infrastructure\Mercure\MercureVoiceEventPublisher'
 
+    App\Infrastructure\Mercure\MercureSubscribeUrlFactory:
+        arguments:
+            $mercurePublicUrl: '%env(default::MERCURE_PUBLIC_URL)%'
+
     App\Infrastructure\Transcription\WhisperCppTranscriptionProvider:
         tags: ['app.transcription_provider']
 

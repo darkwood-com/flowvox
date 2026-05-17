@@ -161,13 +161,44 @@ php bin/console voice:watch-folder --dir=var/watch
 
 ## Native app (Hotwire Native)
 
-Flowvox includes `symfony/ux-native` for iOS/Android shells. Web-first Twig templates work in WKWebView; bridge controllers: `microphone-permission`, `native-recorder`, `file-picker`, `share-export`.
+Flowvox uses [`symfony/ux-native`](https://symfony.com/bundles/ux-native) to wrap the web UI in iOS/Android shells. One Twig codebase; `ux_is_native()` hides the web navbar in the native app.
 
-Generate native config:
+### Symfony setup
+
+Already installed: `symfony/ux-native`. Native JSON config is defined in `src/Native/FlowvoxNativeConfiguration.php`:
+
+- iOS: `/config/ios_v1.json`
+- Android: `/config/android_v1.json`
+
+In **dev**, these URLs are served dynamically. For **production**, dump static files:
 
 ```bash
-php bin/console ux:native:generate-config
+php bin/console ux-native:dump
+# → public/config/ios_v1.json
 ```
+
+### Bridge components (web)
+
+| Stimulus controller | Role |
+|---------------------|------|
+| `settings-bar-button` | Nav bar → Settings (iOS example) |
+| `microphone-permission` | Request mic on Settings (native) |
+| `native-recorder` | Extension point for native record UI |
+| `file-picker`, `share-export` | Export / file hooks |
+
+Templates: `{% if not ux_is_native() %}` in `templates/base.html.twig`.
+
+### iOS example app
+
+See **[ios/README.md](ios/README.md)** for Xcode setup (Hotwire Native package, `SceneDelegate`, bridge Swift classes).
+
+1. Start Symfony: `symfony server:start`
+2. Create Xcode project, add package `https://github.com/hotwired/hotwire-native-ios`
+3. Copy `ios/FlowvoxNative/*.swift` and `path-configuration.json` into the target
+4. Set `flowvoxRootURL` to `https://127.0.0.1:8000` (simulator) or your Mac’s LAN IP (device)
+5. Run — dashboard loads in WKWebView with a native **Settings** button
+
+Mercure live transcription: from a physical device, use a reachable host (not `127.0.0.1`) for both the web app and `MERCURE_PUBLIC_URL`.
 
 ## Architecture
 

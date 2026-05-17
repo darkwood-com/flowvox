@@ -37,7 +37,12 @@
 {% if ux_is_native() %}
 <section>
     <h2>Native app</h2>
-    <p data-controller="microphone-permission">Microphone permission bridge active.</p>
+    <p
+        data-controller="microphone-permission"
+        data-action="microphone-permission:granted->microphone-permission#onGranted"
+    >
+        Microphone: requesting permission via native bridge…
+    </p>
 </section>
 {% endif %}
 {% endblock %}

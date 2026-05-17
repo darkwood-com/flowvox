@@ -13,6 +13,7 @@
     {% endblock %}
 </head>
 <body class="{% if ux_is_native() %}native-app{% endif %}">
+{% if not ux_is_native() %}
 <header class="header">
     <a href="{{ path('dashboard') }}" class="brand">Flowvox</a>
     <nav>
@@ -21,6 +22,15 @@
         <a href="{{ path('settings') }}">Settings</a>
     </nav>
 </header>
+{% else %}
+{# Bridge: native title bar button (hidden on web via bridge.css) #}
+<a href="{{ path('settings') }}"
+   class="native-bridge-settings"
+   {{ stimulus_controller('settings-bar-button') }}
+   data-bridge-title="Settings"
+   aria-label="Settings"
+>Settings</a>
+{% endif %}
 <main class="main">
     {% for label, messages in app.flashes %}
         {% for message in messages %}

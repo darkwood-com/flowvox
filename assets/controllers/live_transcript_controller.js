@@ -14,8 +14,8 @@ export default class extends Controller {
             return;
         }
 
-        // Send mercureAuthorization cookie (set by Twig mercure() with subscribe option)
-        this.source = new EventSource(this.urlValue, { withCredentials: true });
+        const useCredentials = !this.urlValue.includes('authorization=');
+        this.source = new EventSource(this.urlValue, { withCredentials: useCredentials });
         this.source.onmessage = (event) => {
             const raw = event.data;
             if (typeof raw === 'string' && raw.includes('<turbo-stream')) {

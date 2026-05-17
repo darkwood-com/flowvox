@@ -1,0 +1,5 @@
+/* Hide web UI replaced by native bridge components */
+[data-bridge-components~='settings-bar-button']
+[data-controller~='settings-bar-button'] {
+    display: none;
+}

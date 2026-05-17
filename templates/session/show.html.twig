@@ -27,7 +27,7 @@
 <section
     class="live-transcript"
     data-controller="live-transcript"
-    data-live-transcript-url-value="{{ mercure(mercure_topic, { subscribe: [mercure_topic, '/voice/dashboard'] }) }}"
+    data-live-transcript-url-value="{{ mercure_subscribe_url([mercure_topic, '/voice/dashboard']) }}"
 >
     <h2>Live transcription</h2>
     <div id="live-transcript-content" data-live-transcript-target="content">
